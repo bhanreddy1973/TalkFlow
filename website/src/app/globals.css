@@ -1,13 +1,27 @@
 @import "tailwindcss";
 
 :root {
+  --background: #fafbff;
+  --foreground: #1a1a2e;
+  --primary: #6366f1;
+  --primary-light: #818cf8;
+  --muted: #64748b;
+  --card: #ffffff;
+  --card-hover: #f8fafc;
+  --border: #e2e8f0;
+  --surface: rgba(255, 255, 255, 0.7);
+}
+
+.dark {
   --background: #030014;
   --foreground: #f1f1f4;
-  --primary: #6366f1;
+  --primary: #818cf8;
   --primary-light: #a5b4fc;
-  --muted: #9ca3af;
+  --muted: #94a3b8;
   --card: #0f0f1a;
-  --border: #1f1f2e;
+  --card-hover: #161625;
+  --border: #1e293b;
+  --surface: rgba(15, 15, 26, 0.7);
 }
 
 @theme inline {
@@ -20,46 +34,92 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
+  font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
   overflow-x: hidden;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
-/* Gradient text utility */
+/* Apple-style gradient text */
 .gradient-text {
-  background: linear-gradient(135deg, #6366f1 0%, #a855f7 50%, #06b6d4 100%);
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
-/* Animated gradient border */
-.border-gradient {
+.dark .gradient-text {
+  background: linear-gradient(135deg, #818cf8 0%, #a78bfa 50%, #c084fc 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Apple liquid glass effect */
+.glass {
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.dark .glass {
+  background: rgba(15, 15, 26, 0.6);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass:hover {
+  background: rgba(255, 255, 255, 0.75);
+  border-color: rgba(99, 102, 241, 0.2);
+  box-shadow: 0 8px 32px rgba(99, 102, 241, 0.08);
+}
+
+.dark .glass:hover {
+  background: rgba(15, 15, 26, 0.75);
+  border-color: rgba(129, 140, 248, 0.2);
+  box-shadow: 0 8px 32px rgba(129, 140, 248, 0.08);
+}
+
+/* Liquid blob animation */
+.liquid-blob {
+  border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%;
+  animation: blob-morph 8s ease-in-out infinite;
+}
+
+@keyframes blob-morph {
+  0%, 100% { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; }
+  25% { border-radius: 30% 60% 70% 40% / 50% 60% 30% 60%; }
+  50% { border-radius: 50% 60% 30% 60% / 30% 50% 70% 60%; }
+  75% { border-radius: 60% 30% 50% 40% / 60% 70% 30% 50%; }
+}
+
+/* Apple-style shimmer */
+.shimmer {
   position: relative;
-  border-radius: 16px;
   overflow: hidden;
 }
 
-.border-gradient::before {
+.shimmer::after {
   content: '';
   position: absolute;
   inset: 0;
-  padding: 1px;
-  border-radius: 16px;
-  background: linear-gradient(135deg, #6366f1, #a855f7, #06b6d4);
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  opacity: 0.5;
-  transition: opacity 0.3s;
+  background: linear-gradient(
+    105deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.1) 45%,
+    rgba(255, 255, 255, 0.2) 50%,
+    rgba(255, 255, 255, 0.1) 55%,
+    transparent 70%
+  );
+  transform: translateX(-100%);
+  animation: shimmer-slide 6s ease-in-out infinite;
 }
 
-.border-gradient:hover::before {
-  opacity: 1;
-}
-
-/* Glow effect */
-.glow {
-  box-shadow: 0 0 60px rgba(99, 102, 241, 0.15);
+@keyframes shimmer-slide {
+  0% { transform: translateX(-100%); }
+  50%, 100% { transform: translateX(100%); }
 }
 
 /* Smooth scrolling */
@@ -67,20 +127,12 @@ html {
   scroll-behavior: smooth;
 }
 
-/* Grid pattern background */
-.grid-pattern {
-  background-image: 
-    linear-gradient(rgba(99, 102, 241, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(99, 102, 241, 0.03) 1px, transparent 1px);
-  background-size: 64px 64px;
+/* Subtle dot pattern */
+.dot-pattern {
+  background-image: radial-gradient(circle, rgba(99, 102, 241, 0.07) 1px, transparent 1px);
+  background-size: 32px 32px;
 }
 
-/* Noise texture */
-.noise::after {
-  content: '';
-  position: fixed;
-  inset: 0;
-  background: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.7' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.02'/%3E%3C/svg%3E");
-  pointer-events: none;
-  z-index: 100;
+.dark .dot-pattern {
+  background-image: radial-gradient(circle, rgba(129, 140, 248, 0.05) 1px, transparent 1px);
 }

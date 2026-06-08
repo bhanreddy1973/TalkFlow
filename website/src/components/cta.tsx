@@ -13,32 +13,30 @@ export function CTA() {
           transition={{ duration: 0.5 }}
           className="relative text-center"
         >
-          {/* Background glow */}
+          {/* Liquid blob background */}
           <div className="absolute inset-0 pointer-events-none">
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[300px] bg-indigo-500/10 rounded-full blur-[100px]" />
+            <div className="liquid-blob absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[300px] bg-indigo-300/20 dark:bg-indigo-500/10 blur-[80px]" />
           </div>
 
-          <div className="relative z-10">
+          <div className="relative z-10 glass rounded-[2rem] p-12 md:p-16">
             <h2 className="text-4xl md:text-5xl font-bold tracking-tight mb-4">
               Ready to type with your{" "}
               <span className="gradient-text">voice</span>?
             </h2>
-            <p className="text-gray-400 text-lg mb-10 max-w-lg mx-auto">
+            <p className="text-[var(--muted)] text-lg mb-10 max-w-lg mx-auto">
               Free. Open source. No account needed.
             </p>
 
-            <div className="flex flex-wrap justify-center gap-4 mb-8">
-              <a
-                href="https://github.com/bhanreddy1973/TalkFlow"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="group relative px-10 py-4 rounded-xl font-semibold text-white bg-gradient-to-r from-indigo-600 to-purple-600 shadow-xl shadow-indigo-500/25 hover:shadow-indigo-500/40 transition-all duration-300 hover:-translate-y-0.5 text-lg"
-              >
-                Get TalkFlow
-              </a>
-            </div>
+            <a
+              href="https://github.com/bhanreddy1973/TalkFlow"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="shimmer inline-block relative px-10 py-4 rounded-2xl font-semibold text-white text-lg bg-gradient-to-r from-indigo-500 to-purple-500 shadow-xl shadow-indigo-500/20 hover:shadow-indigo-500/30 transition-all duration-300 hover:-translate-y-1 hover:scale-105"
+            >
+              Get TalkFlow →
+            </a>
 
-            <p className="text-gray-500 text-sm">
+            <p className="mt-6 text-[var(--muted)] text-sm">
               Requires macOS 13+ · Apple Silicon or Intel · Python 3.11+
             </p>
           </div>

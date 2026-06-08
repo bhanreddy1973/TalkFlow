@@ -9,7 +9,7 @@ import { Footer } from "@/components/footer";
 
 export default function Home() {
   return (
-    <main className="noise grid-pattern">
+    <main className="dot-pattern">
       <Navbar />
       <Hero />
       <Features />

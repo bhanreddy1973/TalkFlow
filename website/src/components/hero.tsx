@@ -4,12 +4,12 @@ import { motion } from "framer-motion";
 
 export function Hero() {
   return (
-    <section className="relative min-h-screen flex flex-col items-center justify-center text-center px-6 pt-24 pb-16 overflow-hidden">
-      {/* Radial gradient background */}
-      <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-indigo-500/10 rounded-full blur-[120px]" />
-        <div className="absolute top-1/3 right-1/4 w-[400px] h-[400px] bg-purple-500/8 rounded-full blur-[100px]" />
-        <div className="absolute bottom-1/3 left-1/4 w-[300px] h-[300px] bg-cyan-500/5 rounded-full blur-[80px]" />
+    <section className="relative min-h-screen flex flex-col items-center justify-center text-center px-6 pt-28 pb-16 overflow-hidden">
+      {/* Liquid background blobs */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        <div className="liquid-blob absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-indigo-400/20 dark:bg-indigo-500/10 blur-[80px]" />
+        <div className="liquid-blob absolute top-1/3 right-1/4 w-[400px] h-[400px] bg-purple-400/15 dark:bg-purple-500/8 blur-[60px]" style={{ animationDelay: "-3s" }} />
+        <div className="liquid-blob absolute bottom-1/4 left-1/3 w-[350px] h-[350px] bg-pink-300/15 dark:bg-cyan-500/5 blur-[70px]" style={{ animationDelay: "-5s" }} />
       </div>
 
       {/* Badge */}
@@ -17,13 +17,13 @@ export function Hero() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.1 }}
-        className="relative z-10 inline-flex items-center gap-2 px-4 py-2 rounded-full border border-indigo-500/30 bg-indigo-500/5 mb-8"
+        className="relative z-10 glass inline-flex items-center gap-2 px-5 py-2.5 rounded-full mb-8"
       >
         <span className="relative flex h-2 w-2">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75" />
-          <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500" />
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
         </span>
-        <span className="text-sm text-indigo-300 font-medium">
+        <span className="text-sm font-medium text-[var(--muted)]">
           100% Local · No Cloud · Open Source
         </span>
       </motion.div>
@@ -33,12 +33,12 @@ export function Hero() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.2 }}
-        className="relative z-10 text-5xl md:text-7xl lg:text-8xl font-extrabold tracking-tight leading-[1.05] mb-6"
+        className="relative z-10 text-5xl md:text-7xl lg:text-[5.5rem] font-extrabold tracking-tight leading-[1.08] mb-6"
       >
         Speak.{" "}
         <span className="gradient-text">It types.</span>
         <br />
-        <span className="text-gray-400">Live.</span>
+        <span className="text-[var(--muted)]">Live.</span>
       </motion.h1>
 
       {/* Subtitle */}
@@ -46,7 +46,7 @@ export function Hero() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.3 }}
-        className="relative z-10 text-lg md:text-xl text-gray-400 max-w-2xl mb-10"
+        className="relative z-10 text-lg md:text-xl text-[var(--muted)] max-w-2xl mb-10 leading-relaxed"
       >
         Real-time voice-to-text that types as you speak. Works in any app on
         macOS. Powered by Whisper, running entirely on your device.
@@ -61,15 +61,15 @@ export function Hero() {
       >
         <a
           href="#how-it-works"
-          className="group relative px-8 py-3.5 rounded-xl font-semibold text-white bg-gradient-to-r from-indigo-600 to-purple-600 shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40 transition-all duration-300 hover:-translate-y-0.5"
+          className="shimmer relative px-8 py-3.5 rounded-2xl font-semibold text-white bg-gradient-to-r from-indigo-500 to-purple-500 shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 transition-all duration-300 hover:-translate-y-1 hover:scale-105"
         >
-          <span className="relative z-10">See How It Works</span>
+          See How It Works
         </a>
         <a
           href="https://github.com/bhanreddy1973/TalkFlow"
           target="_blank"
           rel="noopener noreferrer"
-          className="px-8 py-3.5 rounded-xl font-semibold text-gray-300 border border-white/10 bg-white/5 hover:bg-white/10 hover:border-indigo-500/30 transition-all duration-300 hover:-translate-y-0.5"
+          className="glass px-8 py-3.5 rounded-2xl font-semibold text-[var(--foreground)] hover:-translate-y-1 hover:scale-105 transition-all duration-300"
         >
           ⭐ View on GitHub
         </a>
@@ -85,9 +85,9 @@ export function Hero() {
         <motion.div
           animate={{ y: [0, 8, 0] }}
           transition={{ duration: 2, repeat: Infinity }}
-          className="w-6 h-10 rounded-full border-2 border-white/20 flex justify-center pt-2"
+          className="w-6 h-10 rounded-full border-2 border-[var(--border)] flex justify-center pt-2"
         >
-          <div className="w-1 h-2 rounded-full bg-white/40" />
+          <div className="w-1 h-2 rounded-full bg-[var(--muted)]" />
         </motion.div>
       </motion.div>
     </section>

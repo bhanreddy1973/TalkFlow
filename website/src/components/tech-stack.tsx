@@ -3,20 +3,20 @@
 import { motion } from "framer-motion";
 
 const technologies = [
-  { name: "faster-whisper", category: "AI" },
-  { name: "CTranslate2", category: "AI" },
-  { name: "Python", category: "Core" },
-  { name: "Apple Silicon (int8)", category: "Hardware" },
-  { name: "sounddevice", category: "Audio" },
-  { name: "pynput", category: "Input" },
-  { name: "rumps", category: "UI" },
-  { name: "AppKit", category: "UI" },
-  { name: "PyObjC", category: "macOS" },
+  "faster-whisper",
+  "CTranslate2",
+  "Python",
+  "Apple Silicon",
+  "sounddevice",
+  "pynput",
+  "rumps",
+  "AppKit",
+  "PyObjC",
 ];
 
 export function TechStack() {
   return (
-    <section className="py-24 px-6">
+    <section className="py-24 px-6 dot-pattern">
       <div className="max-w-4xl mx-auto text-center">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -27,7 +27,7 @@ export function TechStack() {
           <h2 className="text-4xl md:text-5xl font-bold tracking-tight mb-4">
             Built <span className="gradient-text">With</span>
           </h2>
-          <p className="text-gray-400 text-lg mb-12">
+          <p className="text-[var(--muted)] text-lg mb-12">
             Open-source tools you can trust.
           </p>
         </motion.div>
@@ -41,15 +41,15 @@ export function TechStack() {
         >
           {technologies.map((tech, index) => (
             <motion.span
-              key={tech.name}
+              key={tech}
               initial={{ opacity: 0, scale: 0.9 }}
               whileInView={{ opacity: 1, scale: 1 }}
               viewport={{ once: true }}
               transition={{ duration: 0.3, delay: index * 0.05 }}
-              whileHover={{ scale: 1.05, y: -2 }}
-              className="px-5 py-2.5 rounded-full border border-white/10 bg-white/5 text-sm text-gray-300 font-medium hover:border-indigo-500/40 hover:bg-indigo-500/5 transition-colors duration-200 cursor-default"
+              whileHover={{ scale: 1.08, y: -3 }}
+              className="glass px-5 py-2.5 rounded-full text-sm text-[var(--foreground)] font-medium cursor-default"
             >
-              {tech.name}
+              {tech}
             </motion.span>
           ))}
         </motion.div>
