@@ -1,52 +1,360 @@
-# TalkFlow Local
+# TalkFlow
 
 **Voice typing that runs 100% locally on your Mac using OpenAI's Whisper.**
 
-Hold `Ctrl + .` (period), speak, release - your words appear at the cursor. In any app.
+Hold `Ctrl + .`, speak, release — your words appear at the cursor. In any app.
+
+---
+
+## How It Works
+
+TalkFlow is a background macOS menu bar app that listens for a global hotkey, records your voice through the mic, transcribes speech locally using the Whisper AI model, and pastes the resulting text at your cursor position via the clipboard.
+
+There's no cloud, no API keys, no internet required. Everything runs on-device using `faster-whisper` with int8 quantization optimized for Apple Silicon.
+
+### High-Level Flow
+
+```mermaid
+flowchart LR
+    A[🎙️ Hold Ctrl+.] --> B[🔴 Record Audio]
+    B --> C[📁 Save WAV]
+    C --> D[🧠 Whisper Transcribe]
+    D --> E[✏️ Process Commands]
+    E --> F[📋 Clipboard Paste]
+    F --> G[📝 Text at Cursor]
+```
+
+---
+
+## Architecture & Workflow Diagrams
+
+### 1. End-to-End Push-to-Talk Flow
+
+This is the complete sequence from pressing the hotkey to text appearing at your cursor:
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant HotkeyManager
+    participant AudioRecorder
+    participant WhisperEngine
+    participant TextProcessor
+    participant TextInserter
+    participant MenuBar
+
+    User->>HotkeyManager: Press Ctrl+.
+    HotkeyManager->>AudioRecorder: start_recording()
+    AudioRecorder->>MenuBar: set_recording_state(true)
+    Note over AudioRecorder: 🔊 Tink.aiff (start sound)
+    MenuBar->>MenuBar: Show 🔴 recording icon
+
+    loop Audio Capture
+        AudioRecorder->>AudioRecorder: _audio_callback(chunk)
+        AudioRecorder->>AudioRecorder: Calculate RMS level
+    end
+
+    User->>HotkeyManager: Release Ctrl+.
+    HotkeyManager->>AudioRecorder: stop_recording()
+    AudioRecorder->>AudioRecorder: Save chunks → temp WAV
+    Note over AudioRecorder: 🔊 Pop.aiff (stop sound)
+    AudioRecorder->>MenuBar: set_recording_state(false)
+
+    AudioRecorder-->>WhisperEngine: audio_path (background thread)
+    MenuBar->>MenuBar: Show ⏳ processing icon
+    WhisperEngine->>WhisperEngine: transcribe(audio_path)
+    WhisperEngine-->>TextProcessor: raw text
+
+    TextProcessor->>TextProcessor: Replace spoken commands
+    TextProcessor->>TextProcessor: Apply punctuation & formatting
+    TextProcessor->>TextProcessor: Clean spacing
+
+    TextProcessor-->>TextInserter: processed text
+    TextInserter->>TextInserter: Save current clipboard
+    TextInserter->>TextInserter: Copy text → Cmd+V paste
+    TextInserter->>TextInserter: Restore original clipboard
+    Note over TextInserter: 🔊 Glass.aiff (success sound)
+    MenuBar->>MenuBar: Show 🎤 idle icon
+```
+
+### 2. Application Startup
+
+```mermaid
+flowchart TD
+    A[run.py] --> B[Write PID file]
+    B --> C[Add src/ to sys.path]
+    C --> D[Config.load from settings.toml]
+    D --> E[Create Components]
+
+    E --> E1[AudioRecorder]
+    E --> E2[WhisperEngine]
+    E --> E3[TextInserter]
+    E --> E4[TextProcessor]
+    E --> E5[HotkeyManager]
+
+    E1 --> F[Wire callbacks between components]
+    E2 --> F
+    E3 --> F
+    E4 --> F
+    E5 --> F
+
+    F --> G[Start hotkey listener thread]
+    G --> H[Preload Whisper model in background]
+    H --> I[Create MenuBarApp]
+    I --> J["rumps.App.run() — main thread blocks"]
+    J --> K[✓ TalkFlow is ready]
+```
+
+### 3. State Machine
+
+```mermaid
+stateDiagram-v2
+    [*] --> Idle
+
+    Idle --> Recording: Hotkey Pressed
+    Recording --> Saving: Hotkey Released
+    Recording --> Saving: Silence Timeout
+    Recording --> Saving: Max Duration Hit
+    Recording --> Idle: Audio too short (< 0.3s)
+    Saving --> Transcribing: WAV file saved
+    Transcribing --> Processing: Raw text ready
+    Processing --> Preview: preview_before_paste enabled
+    Processing --> Inserting: preview disabled
+    Preview --> Inserting: User confirms
+    Preview --> Idle: User cancels
+    Transcribing --> Idle: No speech detected / Error
+    Inserting --> Idle: Text pasted ✅
+
+    state Recording {
+        [*] --> Capturing
+        Capturing --> Capturing: Audio chunk received
+        Capturing --> SilenceCheck: RMS below threshold
+        SilenceCheck --> Capturing: Speech resumes
+        SilenceCheck --> AutoStop: Silence exceeds timeout
+    }
+```
+
+### 4. Toggle Mode & Silence Detection
+
+In toggle mode, pressing the hotkey once starts recording, pressing again stops it. Silence auto-stop works in both modes:
+
+```mermaid
+flowchart TD
+    A[User presses hotkey] --> B[Recording starts]
+    B --> C{Audio callback}
+    C -->|RMS ≥ threshold| D[Reset silence timer]
+    D --> E[Mark has_had_speech = true]
+    E --> C
+    C -->|RMS < threshold| F{has_had_speech?}
+    F -->|No| C
+    F -->|Yes| G{silence_start set?}
+    G -->|No| H[Set silence_start = now]
+    H --> C
+    G -->|Yes| I{Duration ≥ timeout?}
+    I -->|No| C
+    I -->|Yes| J[🤫 Auto-stop recording]
+    J --> K[Transcribe & paste]
+```
+
+### 5. Text Processing Pipeline
+
+Spoken words like "period" and "new line" are converted to actual characters:
+
+```mermaid
+flowchart LR
+    A[Raw Whisper Output] --> B[Capitalization Commands]
+    B --> C[Formatting Commands]
+    C --> D[Punctuation Replacement]
+    D --> E[Spacing Cleanup]
+    E --> F[Final Text]
+```
+
+| Say this | Becomes |
+|----------|---------|
+| "period" / "full stop" | `.` |
+| "comma" | `,` |
+| "question mark" | `?` |
+| "exclamation mark" | `!` |
+| "new line" | line break |
+| "new paragraph" | double line break |
+| "capitalize hello" | `Hello` |
+| "all caps world" | `WORLD` |
+
+### 6. Threading Model
+
+```mermaid
+flowchart TD
+    subgraph Main["Main Thread (macOS CFRunLoop)"]
+        A[MenuBarApp via rumps]
+        B[Handle menu clicks]
+        C[Update UI state]
+    end
+
+    subgraph Listener["pynput Listener Thread"]
+        D[Global keyboard.Listener]
+        E[on_press / on_release events]
+    end
+
+    subgraph Workers["Background Daemon Threads"]
+        F[Transcription worker]
+        G[Model preload]
+        H[Sound playback subprocess]
+        I[Silence timeout handler]
+    end
+
+    subgraph Audio["sounddevice Audio Thread"]
+        J[InputStream callback]
+        K[RMS calculation + silence check]
+    end
+
+    E -->|spawns thread| F
+    A --> B
+    B --> C
+    J --> K
+    K -->|timeout| I
+```
+
+### 7. Data Flow
+
+```mermaid
+flowchart LR
+    subgraph Input
+        MIC[🎙️ Microphone]
+        KB[⌨️ Keyboard]
+    end
+
+    subgraph Processing
+        WAV[📁 Temp WAV file]
+        MODEL[🧠 Whisper model]
+        PROC[✏️ Text Processor]
+    end
+
+    subgraph Output
+        CLIP[📋 Clipboard]
+        CURSOR[📝 Active text field]
+    end
+
+    subgraph Storage
+        CONFIG[⚙️ config.toml]
+        HIST[📜 history.json]
+    end
+
+    MIC -->|"sounddevice 16kHz"| WAV
+    KB -->|"pynput hotkey"| WAV
+    WAV -->|"faster-whisper int8"| MODEL
+    MODEL --> PROC
+    PROC --> CLIP
+    CLIP -->|"Cmd+V"| CURSOR
+    MODEL --> HIST
+    CONFIG -.->|settings| MODEL
+```
+
+### 8. Component Architecture
+
+```mermaid
+classDiagram
+    class TalkFlowApp {
+        +run()
+        +get_stats()
+        -_on_hotkey_press()
+        -_on_hotkey_release()
+        -_stop_and_transcribe()
+        -_transcribe_and_insert(path)
+    }
+
+    class AudioRecorder {
+        +start_recording()
+        +stop_recording()
+        +cleanup()
+        -_audio_callback(indata)
+        -_check_silence(rms)
+    }
+
+    class WhisperEngine {
+        +load_model()
+        +transcribe(path)
+        +change_model(name)
+    }
+
+    class TextProcessor {
+        +process(text)
+    }
+
+    class TextInserter {
+        +insert_text(text)
+    }
+
+    class HotkeyManager {
+        +start()
+        +stop()
+        +set_hotkey(keys)
+        +set_mode(mode)
+    }
+
+    class MenuBarApp {
+        +set_recording_state(bool)
+        +set_processing_state(bool)
+        +run()
+    }
+
+    class Config {
+        +load()
+        +save()
+    }
+
+    TalkFlowApp --> AudioRecorder
+    TalkFlowApp --> WhisperEngine
+    TalkFlowApp --> TextInserter
+    TalkFlowApp --> TextProcessor
+    TalkFlowApp --> HotkeyManager
+    TalkFlowApp --> MenuBarApp
+    TalkFlowApp --> Config
+```
+
+---
 
 ## Features
 
-- **100% Local** - All processing on your Mac, no cloud, no data leaves your device
-- **Fast** - Uses `faster-whisper` with int8 optimization for Apple Silicon
-- **Universal** - Works in any text field: browsers, editors, terminals, chat apps
-- **Simple** - One hotkey, no setup wizard, just works
-- **Private** - Only monitors `Ctrl + .`, nothing else
+- **100% Local** — All processing on your Mac. No cloud, no data leaves your device.
+- **Fast** — Uses `faster-whisper` with int8 optimization for Apple Silicon.
+- **Universal** — Works in any text field: browsers, editors, terminals, chat apps.
+- **Simple** — One hotkey, no setup wizard, just works.
+- **Private** — Only monitors `Ctrl + .`, nothing else.
+- **Spoken Commands** — Say "period", "comma", "new line" and they become actual punctuation.
+- **Streaming Preview** — See partial transcription in real-time as you speak.
+- **History** — Last 50 transcriptions saved; re-paste anytime from the menu bar.
+
+---
 
 ## Quick Start
 
-Just run the install script:
-
 ```bash
-cd voice_typing
+cd TalkFlow
 ./scripts/install.sh
 ```
 
-That's it! The script will:
-1. Create Python virtual environment
+The install script will:
+1. Create a Python virtual environment
 2. Install all dependencies
 3. Verify packages
 4. Check macOS permissions
 5. Optionally enable auto-start at login
 
-**Then grant permissions** (see below) and run `./scripts/start.sh`.
+Then grant permissions (see below) and start:
+
+```bash
+./scripts/start.sh
+```
+
+---
 
 ## Usage
-
-Everything installs into `venv/` in this folder. **You do not need to activate venv** for normal use — `start.sh` calls `venv/bin/python3` directly.
 
 ```bash
 # Start TalkFlow (uses venv automatically)
 ./scripts/start.sh
 
-# Stop TalkFlow  
+# Stop TalkFlow
 ./scripts/stop.sh
-```
-
-Optional — manual run with venv activated:
-
-```bash
-source venv/bin/activate
-python run.py
 ```
 
 ### Recording
@@ -55,234 +363,157 @@ python run.py
 2. **Hold `Ctrl + .`** (Control + period)
 3. Speak naturally
 4. **Release** the keys
-5. Text appears at your cursor!
+5. Text appears at your cursor
 
-## Each Folder Needs Its Own Install
-
-**Important:** If you copy talkflow to another location (Desktop, Downloads, USB), you must run install **in that folder**:
-
-```bash
-cd /path/to/that/copy/of/talkflow
-./scripts/install.sh
-```
-
-The `venv/` folder is **not portable** between copies. Permissions (Cursor.app) are system-wide and work everywhere, but packages only exist where you ran `install.sh`.
-
-Verify any folder before use:
-
-```bash
-./venv/bin/python3 scripts/check_permissions.py
-```
-
-## Share with Others
-
-Just share the entire `voice_typing` folder (zip without `venv/`). Recipients can:
-
-```bash
-# 1. Copy the folder anywhere
-cp -r voice_typing ~/Desktop/
-
-# 2. Run install
-cd ~/Desktop/voice_typing
-./scripts/install.sh
-
-# 3. Grant permissions (see macOS Permissions section)
-python3 ./scripts/check_permissions.py
-
-# 4. Start using
-./scripts/start.sh
-```
-
-## macOS Permissions (Required)
-
-TalkFlow needs **two permissions** on the app you use to run it — **not** `sh`, `python3`, or the talkflow folder.
-
-### Which app to add?
-
-| How you run TalkFlow | Add this in System Settings |
-|-------------------|----------------------------|
-| **Cursor** integrated terminal | **Cursor.app** |
-| **VS Code** integrated terminal | **Visual Studio Code.app** |
-| **Terminal.app** (macOS) | **Terminal.app** |
-| **iTerm** | **iTerm.app** |
-
-**Do not add** `/bin/sh`, `python3`, or `Python.app` — macOS will not accept them. **Cursor users: add only Cursor.app.**
-
-If `./scripts/start.sh` says "Failed to start" but permissions look OK, check the log (`tail logs/talkflow.log`) or run in foreground: `source venv/bin/activate && python run.py`
-
-### Auto-detect your app
-
-```bash
-python3 ./scripts/check_permissions.py
-```
-
-This opens the right settings panes and prints the exact app path to add.
-
-### Step-by-step (do for Accessibility AND Input Monitoring)
-
-Use the **same app** in both places.
-
-**1. Open System Settings**
-
-- Apple menu → **System Settings** → **Privacy & Security**
-- Open **Accessibility** first, then **Input Monitoring** second
-
-**2. Unlock**
-
-- Click the lock icon (bottom-left) and enter your Mac password
-
-**3. Click the + button**
-
-A file picker opens. You must select a real `.app` file.
-
-**4. Find the app (after clicking +)**
-
-1. Press **⌘ + Shift + G** (Go to Folder)
-2. Paste the folder path:
-
-| App | Paste this, then select |
-|-----|-------------------------|
-| **Cursor** | `/Applications` → **Cursor.app** |
-| **Terminal** | `/System/Applications/Utilities` → **Terminal.app** |
-| **iTerm** | `/Applications` → **iTerm.app** |
-| **VS Code** | `/Applications` → **Visual Studio Code.app** |
-
-3. Click **Open**
-
-**5. Enable the toggle**
-
-In the privacy list, turn **ON** the switch next to the app name.
-
-**6. Repeat for the other permission**
-
-| Setting | What it enables |
-|---------|-----------------|
-| **Accessibility** | Paste transcribed text at your cursor |
-| **Input Monitoring** | Detect the `Ctrl + .` hotkey |
-
-**7. Restart the host app (required)**
-
-macOS only applies new permissions after a full quit:
-
-1. **Quit** Cursor or Terminal with **⌘ + Q** (not just close the window)
-2. Reopen the app
-3. Run:
-
-```bash
-./scripts/start.sh
-```
-
-### Microphone (if recording fails)
-
-**System Settings → Privacy & Security → Microphone** → enable the same app (**Cursor** or **Terminal**).
-
-### Full guide
-
-More detail and troubleshooting: [scripts/PERMISSIONS.md](scripts/PERMISSIONS.md)
-
-## Auto-Start at Login
-
-```bash
-# Enable
-./scripts/autostart.sh install
-
-# Disable
-./scripts/autostart.sh uninstall
-
-# Check status
-./scripts/autostart.sh status
-```
+---
 
 ## Configuration
 
-Edit `~/.config/talkflow/config.toml`:
+Edit `config/settings.toml` (or `~/.config/talkflow/config.toml`):
 
 ```toml
 [whisper]
-model = "base"      # tiny, base, small, medium, large-v3
-language = "en"     # or "auto" for detection
+model = "base"            # tiny, base, small, medium, large-v3
+language = "en"           # or "auto" for detection
 
 [hotkey]
-hotkey = "ctrl+."   # Change if needed
-mode = "push_to_talk"
+hotkey = "ctrl+."         # Change if needed
+mode = "push_to_talk"     # push_to_talk or toggle
+
+[audio]
+max_duration = 300.0      # Max recording seconds (safety limit)
+silence_timeout = 3.0     # Auto-stop after N seconds of silence
+silence_threshold = 0.01  # RMS level for silence detection
 
 [output]
-use_clipboard = true
+process_commands = true           # Replace spoken punctuation
+preview_before_paste = false      # Show confirmation dialog
+add_trailing_space = true         # Space after transcribed text
+
+[app]
+play_sounds = true        # Audio feedback (start/stop/success sounds)
 ```
 
 ## Model Options
 
-| Model | Speed | Accuracy | Download Size |
-|-------|-------|----------|---------------|
-| tiny | ~10x realtime | Basic | ~75MB |
-| **base** | ~7x realtime | Good | ~150MB |
-| small | ~4x realtime | Great | ~500MB |
-| medium | ~2x realtime | Excellent | ~1.5GB |
-| large-v3 | ~1x realtime | Best | ~3GB |
+| Model | Speed | Accuracy | Size |
+|-------|-------|----------|------|
+| tiny | ~10x realtime | Basic | ~75 MB |
+| **base** | ~7x realtime | Good | ~150 MB |
+| small | ~4x realtime | Great | ~500 MB |
+| medium | ~2x realtime | Excellent | ~1.5 GB |
+| large-v3 | ~1x realtime | Best | ~3 GB |
 
-## Folder Structure
+---
+
+## macOS Permissions (Required)
+
+TalkFlow needs two permissions on the app you run it from (e.g., **Cursor.app**, **Terminal.app**):
+
+| Permission | Purpose |
+|-----------|---------|
+| **Accessibility** | Paste transcribed text at your cursor (Cmd+V) |
+| **Input Monitoring** | Detect the `Ctrl + .` hotkey globally |
+
+### How to grant
+
+1. **System Settings → Privacy & Security → Accessibility** → add your terminal app
+2. **System Settings → Privacy & Security → Input Monitoring** → add the same app
+3. **Quit and reopen** the terminal app (⌘+Q, then reopen)
+
+Auto-detect your app:
+```bash
+python3 ./scripts/check_permissions.py
+```
+
+Full guide: [scripts/PERMISSIONS.md](scripts/PERMISSIONS.md)
+
+---
+
+## Auto-Start at Login
+
+```bash
+./scripts/autostart.sh install    # Enable
+./scripts/autostart.sh uninstall  # Disable
+./scripts/autostart.sh status     # Check
+```
+
+---
+
+## Technology Stack
+
+| Layer | Technology | Purpose |
+|-------|-----------|---------|
+| Audio Capture | sounddevice + numpy | Real-time mic recording at 16kHz |
+| Speech-to-Text | faster-whisper (CTranslate2) | Local Whisper inference, int8 on CPU |
+| Text Processing | regex | Spoken commands → punctuation/formatting |
+| Text Insertion | pynput + pyperclip | Clipboard paste via Cmd+V |
+| Hotkey Detection | pynput keyboard.Listener | Global keyboard monitoring |
+| Menu Bar UI | rumps | macOS native menu bar app |
+| Configuration | toml + dataclasses | Type-safe settings |
+| Streaming Overlay | Cocoa/AppKit | Real-time partial transcription display |
+
+---
+
+## Project Structure
 
 ```
-voice_typing/
+TalkFlow/
+├── run.py                          # Entry point
+├── config/
+│   └── settings.toml               # Default configuration
+├── src/
+│   ├── main.py                     # TalkFlowApp orchestrator + History
+│   ├── core/
+│   │   ├── audio_recorder.py       # Recording, silence detection
+│   │   ├── whisper_engine.py       # Transcription engine
+│   │   ├── text_inserter.py        # Clipboard paste with restore
+│   │   ├── text_processor.py       # Spoken commands → punctuation
+│   │   ├── hotkey_manager.py       # Global hotkey listener
+│   │   └── streaming_transcriber.py # Real-time partial transcription
+│   ├── ui/
+│   │   ├── menu_bar.py             # rumps menu bar app
+│   │   └── overlay.py              # Streaming transcription overlay
+│   └── utils/
+│       └── config.py               # TOML config with dataclasses
 ├── scripts/
-│   ├── install.sh            # One-command setup
-│   ├── start.sh              # Start TalkFlow
-│   ├── stop.sh               # Stop TalkFlow
-│   ├── check_permissions.py  # Permission helper (run this first)
-│   ├── PERMISSIONS.md        # Detailed permission guide
-│   └── autostart.sh          # Auto-start at login
-├── src/                      # Core Python code
-├── config/                   # Default configuration
-├── run.py                    # Entry point
-├── requirements.txt          # Dependencies
-└── README.md                 # This file
+│   ├── install.sh                  # One-command setup
+│   ├── start.sh / stop.sh          # Process management
+│   ├── autostart.sh                # Login item management
+│   └── check_permissions.py        # macOS permission helper
+├── diagrams/                       # Architecture diagrams (PNG + Mermaid)
+├── requirements.txt
+├── ARCHITECTURE.md                 # Detailed architecture reference
+└── README.md                       # This file
 ```
+
+---
 
 ## Troubleshooting
 
-### "I can't add /bin/sh" or checker says Running from: /bin/sh
+| Problem | Solution |
+|---------|----------|
+| Hotkey not working | Grant **Input Monitoring** to your terminal app, then restart it |
+| Text not inserting | Grant **Accessibility** to the same app, restart |
+| Wrong language | Set `language = "en"` in config |
+| No audio captured | Grant **Microphone** permission to the terminal app |
+| "This process is not trusted" | Add **Cursor.app** or **Terminal.app** (not `/bin/sh`) |
 
-**Correct** — never add `sh`. Add **Cursor.app** or **Terminal.app** instead (see [macOS Permissions](#macos-permissions-required)).
-
-### "This process is not trusted"
-
-1. Grant **Input Monitoring** and **Accessibility** to **Cursor.app** or **Terminal.app**
-2. Quit the app fully (**⌘ + Q**), reopen, run `./scripts/start.sh` again
-
-### Hotkey not working (`Ctrl + .` does nothing)
-
-1. Run `python3 ./scripts/check_permissions.py`
-2. Confirm **Input Monitoring** is ON for your terminal app
-3. Quit and reopen Cursor/Terminal
-4. Ensure no other app uses `Ctrl + .`
-
-### Text not inserting at cursor
-
-1. Confirm **Accessibility** is ON for the same app
-2. Click in a text field **before** you release the hotkey
-3. Run checker again after restart
-
-### Running from Downloads or any folder
-
-The folder path does not matter. Permissions always go to **Cursor**, **Terminal**, or **iTerm** — whichever app runs the terminal command.
-
-### Wrong language detected
-
-Set `language = "en"` in `~/.config/talkflow/config.toml` (or your language code).
+---
 
 ## Privacy
 
 - All audio processed locally using faster-whisper
 - No network calls, no telemetry, no analytics
 - Audio is deleted immediately after transcription
-- Only `Ctrl + .` hotkey is monitored, nothing else logged
+- Only `Ctrl + .` hotkey is monitored
 
 ## Requirements
 
 - macOS 13.0+ (Ventura or later)
 - Python 3.9+
-- ~500MB disk space (with base model)
-- ~2GB RAM while running
+- ~500 MB disk space (with base model)
+- ~2 GB RAM while running
 
 ## License
 
