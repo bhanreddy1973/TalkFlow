@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 
 export function ThemeToggle() {
   const [isDark, setIsDark] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     const saved = localStorage.getItem("theme");
     const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
     const dark = saved === "dark" || (!saved && prefersDark);
@@ -21,20 +23,41 @@ export function ThemeToggle() {
     localStorage.setItem("theme", newDark ? "dark" : "light");
   };
 
+  if (!mounted) return <div className="w-10 h-10" />;
+
   return (
-    <button
+    <motion.button
       onClick={toggle}
-      className="relative w-14 h-7 rounded-full bg-gray-200 dark:bg-gray-700 transition-colors duration-300 flex items-center px-1 cursor-pointer"
+      whileTap={{ scale: 0.85, rotate: 20 }}
+      whileHover={{ scale: 1.1 }}
+      className="relative w-10 h-10 rounded-full glass flex items-center justify-center cursor-pointer"
       aria-label="Toggle dark mode"
     >
-      <motion.div
-        layout
-        className="w-5 h-5 rounded-full bg-white shadow-md flex items-center justify-center"
-        style={{ marginLeft: isDark ? "auto" : 0 }}
-        transition={{ type: "spring", stiffness: 500, damping: 30 }}
-      >
-        <span className="text-xs">{isDark ? "🌙" : "☀️"}</span>
-      </motion.div>
-    </button>
+      <AnimatePresence mode="wait">
+        {isDark ? (
+          <motion.span
+            key="moon"
+            initial={{ rotate: -90, opacity: 0, scale: 0 }}
+            animate={{ rotate: 0, opacity: 1, scale: 1 }}
+            exit={{ rotate: 90, opacity: 0, scale: 0 }}
+            transition={{ duration: 0.3 }}
+            className="text-lg"
+          >
+            🌙
+          </motion.span>
+        ) : (
+          <motion.span
+            key="sun"
+            initial={{ rotate: 90, opacity: 0, scale: 0 }}
+            animate={{ rotate: 0, opacity: 1, scale: 1 }}
+            exit={{ rotate: -90, opacity: 0, scale: 0 }}
+            transition={{ duration: 0.3 }}
+            className="text-lg"
+          >
+            ☀️
+          </motion.span>
+        )}
+      </AnimatePresence>
+    </motion.button>
   );
 }

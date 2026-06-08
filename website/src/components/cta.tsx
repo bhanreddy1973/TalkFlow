@@ -4,8 +4,8 @@ import { motion } from "framer-motion";
 
 export function CTA() {
   return (
-    <section className="py-24 px-6">
-      <div className="max-w-4xl mx-auto">
+    <section className="py-28 px-6">
+      <div className="max-w-3xl mx-auto">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -13,31 +13,36 @@ export function CTA() {
           transition={{ duration: 0.5 }}
           className="relative text-center"
         >
-          {/* Liquid blob background */}
+          {/* Background blob */}
           <div className="absolute inset-0 pointer-events-none">
-            <div className="liquid-blob absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[300px] bg-indigo-300/20 dark:bg-indigo-500/10 blur-[80px]" />
+            <div className="liquid-blob absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[250px] bg-[var(--primary)]/8 blur-[60px]" />
           </div>
 
-          <div className="relative z-10 glass rounded-[2rem] p-12 md:p-16">
-            <h2 className="text-4xl md:text-5xl font-bold tracking-tight mb-4">
-              Ready to type with your{" "}
-              <span className="gradient-text">voice</span>?
+          <div className="relative z-10">
+            <h2 className="text-4xl md:text-6xl font-black tracking-tight mb-5 leading-tight">
+              Your voice.{" "}
+              <br className="hidden md:block" />
+              <span className="font-light italic text-[var(--muted)]">Your Mac.</span>{" "}
+              <span className="gradient-text">Your words.</span>
             </h2>
-            <p className="text-[var(--muted)] text-lg mb-10 max-w-lg mx-auto">
-              Free. Open source. No account needed.
+
+            <p className="text-[var(--muted)] text-lg mb-10 font-light">
+              Free forever. No signup. No tracking. Just talk.
             </p>
 
-            <a
+            <motion.a
               href="https://github.com/bhanreddy1973/TalkFlow"
               target="_blank"
               rel="noopener noreferrer"
-              className="shimmer inline-block relative px-10 py-4 rounded-2xl font-semibold text-white text-lg bg-gradient-to-r from-indigo-500 to-purple-500 shadow-xl shadow-indigo-500/20 hover:shadow-indigo-500/30 transition-all duration-300 hover:-translate-y-1 hover:scale-105"
+              whileHover={{ scale: 1.05, y: -3 }}
+              whileTap={{ scale: 0.97 }}
+              className="btn-magnetic inline-block px-10 py-5 rounded-full font-bold text-white text-lg bg-[var(--foreground)] dark:bg-white dark:text-[#1c1c1e] shadow-2xl shadow-black/10 dark:shadow-white/5"
             >
-              Get TalkFlow →
-            </a>
+              Get TalkFlow — it&apos;s free →
+            </motion.a>
 
-            <p className="mt-6 text-[var(--muted)] text-sm">
-              Requires macOS 13+ · Apple Silicon or Intel · Python 3.11+
+            <p className="mt-6 text-[var(--muted)] text-xs tracking-wide">
+              macOS 13+ · Apple Silicon or Intel · Python 3.11+
             </p>
           </div>
         </motion.div>

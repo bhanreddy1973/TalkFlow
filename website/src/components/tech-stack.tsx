@@ -3,56 +3,53 @@
 import { motion } from "framer-motion";
 
 const technologies = [
-  "faster-whisper",
-  "CTranslate2",
-  "Python",
-  "Apple Silicon",
-  "sounddevice",
-  "pynput",
-  "rumps",
-  "AppKit",
-  "PyObjC",
+  { name: "faster-whisper", emoji: "🧠" },
+  { name: "Python", emoji: "🐍" },
+  { name: "Apple Silicon", emoji: "🍎" },
+  { name: "sounddevice", emoji: "🎵" },
+  { name: "pynput", emoji: "⌨️" },
+  { name: "rumps", emoji: "📊" },
+  { name: "AppKit", emoji: "🖼️" },
+  { name: "CTranslate2", emoji: "⚙️" },
+  { name: "PyObjC", emoji: "🔗" },
 ];
 
 export function TechStack() {
   return (
-    <section className="py-24 px-6 dot-pattern">
-      <div className="max-w-4xl mx-auto text-center">
-        <motion.div
+    <section className="py-20 px-6 overflow-hidden">
+      <div className="max-w-5xl mx-auto text-center mb-10">
+        <motion.h2
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: "-100px" }}
+          viewport={{ once: true }}
           transition={{ duration: 0.5 }}
+          className="text-3xl md:text-4xl font-black tracking-tight"
         >
-          <h2 className="text-4xl md:text-5xl font-bold tracking-tight mb-4">
-            Built <span className="gradient-text">With</span>
-          </h2>
-          <p className="text-[var(--muted)] text-lg mb-12">
-            Open-source tools you can trust.
-          </p>
-        </motion.div>
+          Powered by{" "}
+          <span className="font-light italic text-[var(--muted)]">open source</span>
+        </motion.h2>
+      </div>
 
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: "-50px" }}
-          transition={{ duration: 0.5, delay: 0.2 }}
-          className="flex flex-wrap justify-center gap-3"
-        >
-          {technologies.map((tech, index) => (
-            <motion.span
-              key={tech}
-              initial={{ opacity: 0, scale: 0.9 }}
-              whileInView={{ opacity: 1, scale: 1 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.3, delay: index * 0.05 }}
-              whileHover={{ scale: 1.08, y: -3 }}
-              className="glass px-5 py-2.5 rounded-full text-sm text-[var(--foreground)] font-medium cursor-default"
-            >
-              {tech}
-            </motion.span>
-          ))}
-        </motion.div>
+      {/* Marquee-style infinite scroll */}
+      <div className="relative">
+        <div className="absolute left-0 top-0 bottom-0 w-20 bg-gradient-to-r from-[var(--background)] to-transparent z-10" />
+        <div className="absolute right-0 top-0 bottom-0 w-20 bg-gradient-to-l from-[var(--background)] to-transparent z-10" />
+
+        <div className="flex overflow-hidden">
+          <div className="animate-marquee flex gap-4 pr-4">
+            {[...technologies, ...technologies].map((tech, index) => (
+              <div
+                key={`${tech.name}-${index}`}
+                className="flex-shrink-0 glass px-5 py-3 rounded-2xl flex items-center gap-2.5 hover:scale-105 transition-transform duration-200"
+              >
+                <span className="text-xl">{tech.emoji}</span>
+                <span className="text-sm font-semibold text-[var(--foreground)] whitespace-nowrap">
+                  {tech.name}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </section>
   );
