@@ -17,15 +17,16 @@ class StreamingTranscriber:
     """
 
     # How often to run transcription on buffered audio (seconds)
-    CHUNK_INTERVAL = 2.5
+    CHUNK_INTERVAL = 1.5
     # Minimum audio length to attempt transcription (seconds)
-    MIN_AUDIO_LENGTH = 1.0
+    MIN_AUDIO_LENGTH = 0.8
 
     def __init__(
         self,
         whisper_engine,
         sample_rate: int = 16000,
         on_partial_text: Optional[Callable[[str], None]] = None,
+        use_fast_model: bool = True,
     ):
         """Initialize streaming transcriber.
         
@@ -33,16 +34,19 @@ class StreamingTranscriber:
             whisper_engine: WhisperEngine instance (must be loaded).
             sample_rate: Audio sample rate.
             on_partial_text: Callback fired with partial transcription text.
+            use_fast_model: Use 'tiny' model for streaming (lower latency).
         """
         self._engine = whisper_engine
         self._sample_rate = sample_rate
         self.on_partial_text = on_partial_text
+        self._use_fast_model = use_fast_model
 
         self._audio_buffer: list[np.ndarray] = []
         self._buffer_lock = threading.Lock()
         self._running = False
         self._thread: Optional[threading.Thread] = None
         self._last_text = ""
+        self._fast_model = None
         self._debug = os.environ.get("TALKFLOW_DEBUG", "0").lower() not in {"0", "false", "no", "off"}
 
     def _debug_log(self, msg: str) -> None:
@@ -105,8 +109,9 @@ class StreamingTranscriber:
 
     def _transcribe_buffer(self, audio_data: np.ndarray) -> str:
         """Transcribe an audio buffer using the whisper engine."""
-        # Ensure model is loaded
-        if not self._engine.is_loaded:
+        # Load fast model on first use
+        model = self._get_model()
+        if model is None:
             return ""
 
         # Write to temporary WAV file
@@ -127,8 +132,7 @@ class StreamingTranscriber:
 
             write_wav(tmp_path, self._sample_rate, audio_int16)
 
-            # Use the engine's model directly for faster partial transcription
-            segments_gen, info = self._engine._model.transcribe(
+            segments_gen, info = model.transcribe(
                 tmp_path,
                 language=self._engine.language,
                 beam_size=1,
@@ -151,3 +155,24 @@ class StreamingTranscriber:
                 os.unlink(tmp_path)
             except Exception:
                 pass
+
+    def _get_model(self):
+        """Get the model for streaming (tiny for speed, or reuse main engine)."""
+        if self._use_fast_model:
+            if self._fast_model is None:
+                try:
+                    from faster_whisper import WhisperModel
+                    self._debug_log("loading tiny model for streaming...")
+                    self._fast_model = WhisperModel(
+                        "tiny",
+                        device="cpu",
+                        compute_type="int8",
+                        cpu_threads=max(4, (os.cpu_count() or 4) // 2),
+                    )
+                    self._debug_log("tiny model loaded for streaming")
+                except Exception as e:
+                    self._debug_log(f"failed to load tiny model: {e}")
+                    return self._engine._model
+            return self._fast_model
+        else:
+            return self._engine._model

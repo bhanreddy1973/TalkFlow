@@ -2,13 +2,13 @@
 
 **Voice typing that runs 100% locally on your Mac using OpenAI's Whisper.**
 
-Hold `Ctrl + .`, speak, release — your words appear at the cursor. In any app.
+Hold `Ctrl + .`, speak, release — your words appear at the cursor **in real-time as you speak**. In any app.
 
 ---
 
 ## How It Works
 
-TalkFlow is a background macOS menu bar app that listens for a global hotkey, records your voice through the mic, transcribes speech locally using the Whisper AI model, and pastes the resulting text at your cursor position via the clipboard.
+TalkFlow is a background macOS menu bar app that listens for a global hotkey, records your voice through the mic, and **streams transcription live** — text appears at your cursor as you speak, not after you stop. When you release the hotkey, a final accuracy pass fills in any remaining words.
 
 There's no cloud, no API keys, no internet required. Everything runs on-device using `faster-whisper` with int8 quantization optimized for Apple Silicon.
 
@@ -17,63 +17,55 @@ There's no cloud, no API keys, no internet required. Everything runs on-device u
 ```mermaid
 flowchart LR
     A[🎙️ Hold Ctrl+.] --> B[🔴 Record Audio]
-    B --> C[📁 Save WAV]
-    C --> D[🧠 Whisper Transcribe]
-    D --> E[✏️ Process Commands]
-    E --> F[📋 Clipboard Paste]
-    F --> G[📝 Text at Cursor]
+    B --> C[⚡ Stream Transcribe]
+    C --> D[📝 Live Type at Cursor]
+    D --> E[✋ Release Hotkey]
+    E --> F[🧠 Final Accuracy Pass]
+    F --> G[✅ Done]
 ```
 
 ---
 
 ## Architecture & Workflow Diagrams
 
-### 1. End-to-End Push-to-Talk Flow
+### 1. End-to-End Live Streaming Flow
 
-This is the complete sequence from pressing the hotkey to text appearing at your cursor:
+This is the complete sequence from pressing the hotkey to text appearing live at your cursor:
 
 ```mermaid
 sequenceDiagram
     participant User
     participant HotkeyManager
     participant AudioRecorder
+    participant StreamingTranscriber
     participant WhisperEngine
-    participant TextProcessor
     participant TextInserter
-    participant MenuBar
+    participant Overlay
 
     User->>HotkeyManager: Press Ctrl+.
     HotkeyManager->>AudioRecorder: start_recording()
-    AudioRecorder->>MenuBar: set_recording_state(true)
+    AudioRecorder->>Overlay: show("🎤 Listening...")
+    AudioRecorder->>StreamingTranscriber: start()
     Note over AudioRecorder: 🔊 Tink.aiff (start sound)
-    MenuBar->>MenuBar: Show 🔴 recording icon
 
-    loop Audio Capture
-        AudioRecorder->>AudioRecorder: _audio_callback(chunk)
-        AudioRecorder->>AudioRecorder: Calculate RMS level
+    loop Every 1.5s while recording
+        AudioRecorder->>StreamingTranscriber: feed_audio(chunk)
+        StreamingTranscriber->>WhisperEngine: transcribe buffer
+        WhisperEngine-->>StreamingTranscriber: partial text
+        StreamingTranscriber->>Overlay: update_text(partial)
+        StreamingTranscriber->>TextInserter: insert NEW words at cursor
+        Note over TextInserter: Live typing as you speak
     end
 
     User->>HotkeyManager: Release Ctrl+.
     HotkeyManager->>AudioRecorder: stop_recording()
-    AudioRecorder->>AudioRecorder: Save chunks → temp WAV
+    AudioRecorder->>StreamingTranscriber: stop()
     Note over AudioRecorder: 🔊 Pop.aiff (stop sound)
-    AudioRecorder->>MenuBar: set_recording_state(false)
 
-    AudioRecorder-->>WhisperEngine: audio_path (background thread)
-    MenuBar->>MenuBar: Show ⏳ processing icon
-    WhisperEngine->>WhisperEngine: transcribe(audio_path)
-    WhisperEngine-->>TextProcessor: raw text
-
-    TextProcessor->>TextProcessor: Replace spoken commands
-    TextProcessor->>TextProcessor: Apply punctuation & formatting
-    TextProcessor->>TextProcessor: Clean spacing
-
-    TextProcessor-->>TextInserter: processed text
-    TextInserter->>TextInserter: Save current clipboard
-    TextInserter->>TextInserter: Copy text → Cmd+V paste
-    TextInserter->>TextInserter: Restore original clipboard
-    Note over TextInserter: 🔊 Glass.aiff (success sound)
-    MenuBar->>MenuBar: Show 🎤 idle icon
+    AudioRecorder-->>WhisperEngine: final full transcription
+    WhisperEngine-->>TextInserter: insert remaining text
+    Note over TextInserter: 🔊 Glass.aiff (success)
+    TextInserter->>Overlay: show_final(text, auto-hide)
 ```
 
 ### 2. Application Startup
@@ -314,14 +306,16 @@ classDiagram
 
 ## Features
 
-- **100% Local** — All processing on your Mac. No cloud, no data leaves your device.
-- **Fast** — Uses `faster-whisper` with int8 optimization for Apple Silicon.
-- **Universal** — Works in any text field: browsers, editors, terminals, chat apps.
-- **Simple** — One hotkey, no setup wizard, just works.
-- **Private** — Only monitors `Ctrl + .`, nothing else.
-- **Spoken Commands** — Say "period", "comma", "new line" and they become actual punctuation.
-- **Streaming Preview** — See partial transcription in real-time as you speak.
-- **History** — Last 50 transcriptions saved; re-paste anytime from the menu bar.
+- **🎙️ Live Speech-to-Text** — Text appears at your cursor as you speak, not after. Real-time streaming every 1.5 seconds.
+- **🔒 100% Local** — All processing on your Mac. No cloud, no data leaves your device.
+- **⚡ Fast** — Uses `faster-whisper` with int8 optimization for Apple Silicon.
+- **🌍 Universal** — Works in any text field: browsers, editors, terminals, chat apps.
+- **📊 Floating Overlay** — A live overlay shows what's being transcribed in real-time.
+- **🎯 Smart Punctuation** — Say "period", "comma", "new line" and they become actual punctuation.
+- **⌨️ Simple Hotkey** — One hotkey (`Ctrl + .`), no setup wizard, just works.
+- **🔒 Private** — Only monitors `Ctrl + .`, nothing else. Audio deleted immediately.
+- **📜 History** — Last 50 transcriptions saved; re-paste anytime from the menu bar.
+- **🌐 Landing Page** — Beautiful website included for showcasing/deployment.
 
 ---
 
@@ -361,9 +355,10 @@ Then grant permissions (see below) and start:
 
 1. Click into any text field
 2. **Hold `Ctrl + .`** (Control + period)
-3. Speak naturally
-4. **Release** the keys
-5. Text appears at your cursor
+3. Speak naturally — **text appears live at your cursor**
+4. A floating overlay shows what's being transcribed
+5. **Release** the keys — final accuracy pass completes
+6. Done! Text is already there.
 
 ---
 
@@ -408,18 +403,20 @@ play_sounds = true        # Audio feedback (start/stop/success sounds)
 
 ## macOS Permissions (Required)
 
-TalkFlow needs two permissions on the app you run it from (e.g., **Cursor.app**, **Terminal.app**):
+TalkFlow needs **three permissions** on the app you run it from (e.g., **Cursor.app**, **Terminal.app**, **Kiro.app**):
 
 | Permission | Purpose |
 |-----------|---------|
 | **Accessibility** | Paste transcribed text at your cursor (Cmd+V) |
 | **Input Monitoring** | Detect the `Ctrl + .` hotkey globally |
+| **Microphone** | Capture audio from your Mac's microphone |
 
 ### How to grant
 
 1. **System Settings → Privacy & Security → Accessibility** → add your terminal app
 2. **System Settings → Privacy & Security → Input Monitoring** → add the same app
-3. **Quit and reopen** the terminal app (⌘+Q, then reopen)
+3. **System Settings → Privacy & Security → Microphone** → add the same app
+4. **Quit and reopen** the terminal app (⌘+Q, then reopen)
 
 Auto-detect your app:
 ```bash
@@ -446,12 +443,14 @@ Full guide: [scripts/PERMISSIONS.md](scripts/PERMISSIONS.md)
 |-------|-----------|---------|
 | Audio Capture | sounddevice + numpy | Real-time mic recording at 16kHz |
 | Speech-to-Text | faster-whisper (CTranslate2) | Local Whisper inference, int8 on CPU |
+| Streaming | StreamingTranscriber | Chunks audio every 1.5s for live transcription |
 | Text Processing | regex | Spoken commands → punctuation/formatting |
 | Text Insertion | pynput + pyperclip | Clipboard paste via Cmd+V |
 | Hotkey Detection | pynput keyboard.Listener | Global keyboard monitoring |
 | Menu Bar UI | rumps | macOS native menu bar app |
+| Live Overlay | AppKit / PyObjC | Floating window showing real-time transcription |
 | Configuration | toml + dataclasses | Type-safe settings |
-| Streaming Overlay | Cocoa/AppKit | Real-time partial transcription display |
+| Landing Page | Next.js + Tailwind + Framer Motion | Vercel-deployable website |
 
 ---
 
@@ -470,12 +469,18 @@ TalkFlow/
 │   │   ├── text_inserter.py        # Clipboard paste with restore
 │   │   ├── text_processor.py       # Spoken commands → punctuation
 │   │   ├── hotkey_manager.py       # Global hotkey listener
-│   │   └── streaming_transcriber.py # Real-time partial transcription
+│   │   └── streaming_transcriber.py # Real-time streaming transcription
 │   ├── ui/
 │   │   ├── menu_bar.py             # rumps menu bar app
-│   │   └── overlay.py              # Streaming transcription overlay
+│   │   └── overlay.py              # Floating transcription overlay (AppKit)
 │   └── utils/
 │       └── config.py               # TOML config with dataclasses
+├── website/                        # Next.js landing page (deployable to Vercel)
+│   ├── src/
+│   │   ├── app/                    # Next.js app router
+│   │   └── components/             # React components (Hero, Features, Demo, etc.)
+│   ├── package.json
+│   └── next.config.ts
 ├── scripts/
 │   ├── install.sh                  # One-command setup
 │   ├── start.sh / stop.sh          # Process management
@@ -495,9 +500,11 @@ TalkFlow/
 |---------|----------|
 | Hotkey not working | Grant **Input Monitoring** to your terminal app, then restart it |
 | Text not inserting | Grant **Accessibility** to the same app, restart |
-| Wrong language | Set `language = "en"` in config |
 | No audio captured | Grant **Microphone** permission to the terminal app |
-| "This process is not trusted" | Add **Cursor.app** or **Terminal.app** (not `/bin/sh`) |
+| Wrong language | Set `language = "en"` in config |
+| "This process is not trusted" | Add **Cursor.app** / **Kiro.app** / **Terminal.app** (not `/bin/sh`) |
+| Live typing not appearing | Whisper model still loading — wait for "Model ready!" in logs |
+| `bad escape` error | Fixed in latest version — update `text_processor.py` |
 
 ---
 
@@ -507,6 +514,26 @@ TalkFlow/
 - No network calls, no telemetry, no analytics
 - Audio is deleted immediately after transcription
 - Only `Ctrl + .` hotkey is monitored
+
+## Website
+
+TalkFlow includes a landing page built with **Next.js**, **Tailwind CSS**, and **Framer Motion** — ready to deploy on Vercel.
+
+```bash
+cd website
+npm install
+npm run dev      # Preview locally at http://localhost:3000
+```
+
+Deploy to Vercel:
+```bash
+cd website
+npx vercel
+```
+
+Or connect the repo on [vercel.com](https://vercel.com) with **Root Directory** set to `website`.
+
+---
 
 ## Requirements
 

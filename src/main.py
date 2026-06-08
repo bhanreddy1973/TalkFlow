@@ -148,6 +148,7 @@ class TalkFlowApp:
                 whisper_engine=self.whisper_engine,
                 sample_rate=self.config.audio.sample_rate,
                 on_partial_text=self._on_partial_transcription,
+                use_fast_model=False,  # Use same model as main engine for accuracy
             )
             self._debug_log("streaming overlay initialized")
         except Exception as e:
@@ -190,10 +191,28 @@ class TalkFlowApp:
             self._streaming_transcriber.feed_audio(chunk)
 
     def _on_partial_transcription(self, text: str) -> None:
-        """Called when streaming transcriber produces partial text."""
+        """Called when streaming transcriber produces partial text — types live at cursor."""
         self._debug_log(f"partial transcription: '{text[:60]}'")
         if self._overlay:
             self._overlay.update_text(text)
+
+        # Live typing: insert only the NEW portion of text
+        if text:
+            already_typed = getattr(self, '_live_typed_text', "")
+            if text.startswith(already_typed):
+                new_text = text[len(already_typed):]
+            else:
+                # Text changed entirely (Whisper revised) — just append new content
+                # We can't un-type what's already been typed, so append the difference
+                new_text = text[len(already_typed):] if len(text) > len(already_typed) else ""
+
+            if new_text.strip():
+                # Add a space separator if needed
+                if already_typed and not already_typed.endswith(" ") and not new_text.startswith(" "):
+                    new_text = " " + new_text
+                self._debug_log(f"live typing: '{new_text.strip()}'")
+                self.text_inserter.insert_text(new_text)
+                self._live_typed_text = already_typed + new_text
 
     def _play_sound(self, sound_type: str) -> None:
         """Play a system sound for audio feedback."""
@@ -291,6 +310,8 @@ class TalkFlowApp:
         self._play_sound("start")
         if self.menu_app:
             self.menu_app.set_recording_state(True)
+        # Reset live typing tracker
+        self._live_typed_text = ""
         # Start streaming transcription + show overlay
         if self._overlay:
             self._overlay.show("🎤 Listening...")
@@ -312,7 +333,7 @@ class TalkFlowApp:
             self._overlay.update_text("⏳ Transcribing...")
 
     def _transcribe_and_insert(self, audio_path: str) -> None:
-        """Transcribe audio and insert text at cursor."""
+        """Transcribe audio and insert remaining text at cursor (live typing already inserted most)."""
         with self._lock:
             if self._is_processing:
                 self._debug_log("processing request ignored because another one is active")
@@ -320,11 +341,11 @@ class TalkFlowApp:
             self._is_processing = True
 
         try:
-            self._debug_log("processing now: transcribing audio")
+            self._debug_log("processing now: final transcription pass")
             if self.menu_app:
                 self.menu_app.set_processing_state(True)
 
-            print("🔄 Transcribing...")
+            print("🔄 Final transcription...")
             result = self.whisper_engine.transcribe(audio_path)
             self._debug_log(
                 f"transcription finished: language={result.language}, "
@@ -340,7 +361,7 @@ class TalkFlowApp:
                 if self.config.output.add_trailing_space:
                     text += " "
 
-                print(f"📝 Transcribed: {text}")
+                print(f"📝 Final: {text}")
 
                 # Save to history
                 self.history.add(
@@ -354,33 +375,25 @@ class TalkFlowApp:
                 self._total_transcriptions += 1
                 self._total_audio_seconds += result.duration
 
-                # Preview before paste (if enabled)
-                if self.config.output.preview_before_paste:
-                    should_paste = self._show_preview(text.strip())
-                    if not should_paste:
-                        self._debug_log("user cancelled paste from preview")
-                        print("🚫 Paste cancelled by user")
-                        return
-
-                time.sleep(0.1)
-
-                self._debug_log("inserting transcribed text at current cursor")
-                success = self.text_inserter.insert_text(text)
-                if success:
-                    self._debug_log("text insertion succeeded")
-                    self._play_sound("success")
-                    print("✅ Text inserted at cursor")
-                    # Show final text on overlay then auto-hide
-                    if self._overlay:
-                        self._overlay.show_final(text.strip(), auto_hide_delay=2.0)
+                # Insert only the portion not already live-typed
+                already_typed = getattr(self, '_live_typed_text', "")
+                if already_typed:
+                    # Compare final text with what was live-typed
+                    remaining = text[len(already_typed):] if text.startswith(already_typed) else ""
+                    if remaining.strip():
+                        self._debug_log(f"inserting remaining: '{remaining.strip()}'")
+                        self.text_inserter.insert_text(remaining)
+                    else:
+                        self._debug_log("live typing covered all text, nothing to insert")
                 else:
-                    self._debug_log("text insertion failed")
-                    self._play_sound("error")
-                    print("❌ Failed to insert text")
-                    if self._overlay:
-                        self._overlay.hide(delay=0)
-                    if self.menu_app:
-                        self.menu_app.show_error("Failed to insert text")
+                    # No live typing happened (model wasn't loaded in time) — insert all
+                    self._debug_log("no live typing occurred; inserting full text")
+                    self.text_inserter.insert_text(text)
+
+                self._play_sound("success")
+                print("✅ Done")
+                if self._overlay:
+                    self._overlay.show_final(text.strip(), auto_hide_delay=2.0)
             else:
                 self._debug_log("transcription returned empty text")
                 print("⚠️  No speech detected")
