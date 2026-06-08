@@ -1,0 +1,9 @@
+flowchart TD
+    A([User clicks Paste Last\nin menu bar]) --> B[TalkFlowApp._on_paste_last]
+    B --> C[TranscriptionHistory.get_last_text\nreturn _entries minus 1 .text]
+    C --> D{text\nfound?}
+    D -->|No history| E[show_notification\nNo transcription history\nreturn]
+    D -->|Has text| F[text_inserter.insert_text\nlast_text + space]
+    F --> G{success?}
+    G -->|Yes| H[print 📋 Re-pasted: ...]
+    G -->|No| I[print ❌ Failed to re-paste]

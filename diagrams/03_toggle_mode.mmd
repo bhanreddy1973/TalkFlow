@@ -1,0 +1,10 @@
+flowchart TD
+    P([User presses hotkey]) --> T1{mode ==\ntoggle?}
+    T1 -->|No — push-to-talk| PTT[see Push-to-Talk flow]
+    T1 -->|Yes| T2{is_recording\ncurrently?}
+    T2 -->|No — idle| T3[start_recording\nsee audio recording flow]
+    T2 -->|Yes — recording| T4[_stop_and_transcribe\nsee transcription flow]
+
+    T3 --> T5([🔴 Recording — press again to stop])
+    T4 --> T6([⏳ Processing...])
+    T6 --> T7([🎤 Idle — ready for next press])

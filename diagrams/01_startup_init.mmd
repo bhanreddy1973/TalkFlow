@@ -1,0 +1,39 @@
+flowchart TD
+    A([run.py starts]) --> B[Write PID file\n.talkflow.pid]
+    B --> C[Set up sys.path\nadd src/ to imports]
+    C --> D[Config.load\nread ~/.config/talkflow/config.toml]
+    D --> E{config.toml\nexists?}
+    E -->|No| F[Use defaults from\nconfig/settings.toml]
+    E -->|Yes| G[Parse TOML into\nAudioConfig / WhisperConfig\nHotkeyConfig / OutputConfig\nAppConfig]
+    F --> G
+
+    G --> H[TalkFlowApp.__init__]
+
+    subgraph INIT["Component Initialization (sequential)"]
+        H --> I1[AudioRecorder\nsample_rate=16000, channels=1\nmax_duration=300s\ndevice=None default mic]
+        I1 --> I2[WhisperEngine\nmodel_name, device=auto\ncompute_type=auto, language]
+        I2 --> I3[TextInserter\nuse_clipboard=True\nController pynput init]
+        I3 --> I4[HotkeyManager\nparse hotkey string e.g. ctrl+.\nset mode push_to_talk or toggle]
+        I4 --> I5[TranscriptionHistory\nload last 50 entries from\n~/.config/talkflow/history.json]
+        I5 --> I6[_setup_callbacks\nwire hotkey → recorder\nwire recorder events → app]
+    end
+
+    I6 --> J[hotkey_manager.start\nspawn pynput Listener thread]
+    J --> K[preload_model\nspawn daemon thread\nload WhisperModel in background]
+
+    K --> L[MenuBarApp init\nrumps app with hotkey_label\non_quit / on_toggle_mode\non_model_change / on_paste_last]
+    L --> M[menu_app.set_mode\nmenu_app.set_model]
+    M --> N[menu_app.run\nenter rumps CFRunLoop\nblocks main thread]
+
+    subgraph BGLOAD["Background: preload_model thread"]
+        K --> PL1[_detect_cpu_threads\nmax 4 or cpu_count/2]
+        PL1 --> PL2{device == auto?}
+        PL2 -->|torch available + CUDA| PL3[device = cuda\ncompute = float16]
+        PL2 -->|no CUDA or no torch| PL4[device = cpu\ncompute = int8]
+        PL3 --> PL5[WhisperModel load\ndownload if not cached]
+        PL4 --> PL5
+        PL5 --> PL6[print Model ready!]
+    end
+
+    style INIT fill:#e8f5e9
+    style BGLOAD fill:#fff3e0

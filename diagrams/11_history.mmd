@@ -1,0 +1,23 @@
+flowchart TD
+    subgraph HISTLOAD["Startup — _load"]
+        HL1[open ~/.config/talkflow/history.json]
+        HL1 --> HL2{file exists?}
+        HL2 -->|No| HL3[_entries = empty list]
+        HL2 -->|Yes| HL4[json.loads\ncreate TranscriptionEntry list\nlast 50 entries max]
+    end
+
+    subgraph HISTADD["history.add — after successful transcription"]
+        HA1[acquire _lock thread-safe]
+        HA1 --> HA2[create TranscriptionEntry\ntext, language, duration\ntimestamp=datetime.now.isoformat\nmodel=config.whisper.model]
+        HA2 --> HA3[append to _entries]
+        HA3 --> HA4{len > MAX_ENTRIES 50?}
+        HA4 -->|Yes| HA5[trim to last 50\n_entries = _entries -50:]
+        HA4 -->|No| HA6
+        HA5 --> HA6[_save\nwrite JSON to disk]
+    end
+
+    subgraph HISTSAVE["_save"]
+        HS1[mkdir -p ~/.config/talkflow]
+        HS1 --> HS2[asdict each entry\nserialize to JSON]
+        HS2 --> HS3[write_text with indent=2]
+    end

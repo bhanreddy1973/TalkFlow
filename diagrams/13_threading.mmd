@@ -1,0 +1,64 @@
+flowchart TD
+    subgraph MAIN["Main Thread — rumps CFRunLoop"]
+        MT1[menu_app.run — blocks here\nhandles menu item clicks\nupdates UI state icons\nroutes callbacks to app]
+    end
+
+    subgraph LISTEN["pynput Listener Thread — always running"]
+        LT1[keyboard.Listener\n_on_press / _on_release\nnormalize keys\ncheck hotkey match]
+        LT1 -->|hotkey matched| LT2[threading.Thread daemon=True\nspawn press handler]
+        LT1 -->|hotkey released| LT3[threading.Thread daemon=True\nspawn release handler]
+    end
+
+    subgraph PRESS["Press Handler Thread — short-lived"]
+        PH1[_on_hotkey_press\ncheck _is_processing\ncheck is_active\ncall start_recording]
+    end
+
+    subgraph RELEASE["Release Handler Thread — short-lived"]
+        RH1[_on_hotkey_release\npoll is_recording up to 500ms\ncall _stop_and_transcribe]
+    end
+
+    subgraph WORKER["Transcription Worker Thread — per-recording daemon"]
+        WT1[_transcribe_and_insert\nset _is_processing=True\ncall whisper_engine.transcribe\ntext_inserter.insert_text\ndelete temp WAV\nset _is_processing=False]
+        WT1 --> WT2[ThreadPoolExecutor max_workers=1\n_transcribe_impl with 120s timeout]
+    end
+
+    subgraph AUDIO["sounddevice Audio Thread — while recording"]
+        AT1[_audio_callback\nper-frame chunks\nRMS calculation\nappend to _audio_chunks]
+    end
+
+    subgraph TIMER["Max Duration Timer Thread — daemon"]
+        TM1[threading.Timer max_duration\nfires _on_max_duration\n→ _stop_and_transcribe]
+    end
+
+    subgraph PRELOAD["Preload Thread — startup daemon"]
+        PL1[whisper_engine.load_model\nruns once at startup]
+    end
+
+    subgraph MODEL_RELOAD["Model Reload Thread — on model change"]
+        MR1[whisper_engine.load_model\nnew model download + load]
+    end
+
+    subgraph SOUND["Sound Thread — per-event subprocess"]
+        SD1[subprocess.Popen afplay .aiff\nTink / Pop / Glass / Basso\nnon-blocking fire-and-forget]
+    end
+
+    LT2 --> PRESS
+    LT3 --> RELEASE
+    PRESS -->|audio_recorder.start_recording| AUDIO
+    PRESS -->|Timer started| TIMER
+    RELEASE -->|_stop_and_transcribe| WORKER
+    TIMER -->|fires → _stop_and_transcribe| WORKER
+    WORKER -->|set UI state| MAIN
+    PRESS -->|set UI state| MAIN
+    RELEASE -->|set UI state| MAIN
+
+    style MAIN fill:#e1f5fe
+    style LISTEN fill:#fff3e0
+    style PRESS fill:#e8f5e9
+    style RELEASE fill:#e8f5e9
+    style WORKER fill:#e8f5e9
+    style AUDIO fill:#fce4ec
+    style TIMER fill:#fce4ec
+    style PRELOAD fill:#fff3e0
+    style MODEL_RELOAD fill:#fff3e0
+    style SOUND fill:#f3e5f5

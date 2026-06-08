@@ -1,0 +1,26 @@
+flowchart TD
+    subgraph STREAM["sounddevice InputStream — Audio Thread"]
+        S1[16kHz mono float32 stream\nopens OS microphone]
+        S1 --> S2[audio frames arrive in callback\nper OS buffer ~10-50ms chunks]
+        S2 --> S3[_audio_callback indata frames time status]
+        S3 --> S4{_recording\nflag set?}
+        S4 -->|No| S5[ignore chunk — not recording yet]
+        S4 -->|Yes| S6[chunk = indata.copy\nprevent reference aliasing]
+        S6 --> S7[acquire _chunks_lock\nappend to _audio_chunks list]
+        S7 --> S8[rms = sqrt mean chunk²\nupdate _current_rms\nupdate _peak_rms = max]
+        S8 --> S9{on_audio_level\ncallback?}
+        S9 -->|Yes| S10[fire real-time level callback\ne.g. for VU meter UI]
+        S9 --> S2
+        S10 --> S2
+    end
+
+    subgraph SAVEFLOW["stop_recording — WAV Save"]
+        W1[np.concatenate all chunks\nalong axis 0]
+        W1 --> W2[len / sample_rate = duration seconds]
+        W2 --> W3{duration >= 0.3s?}
+        W3 -->|No| W4[discard — return None]
+        W3 -->|Yes| W5[avg_rms = sqrt mean all²\nwarn if < 0.005]
+        W5 --> W6[float32 × 32767 → int16\nscale to 16-bit PCM range]
+        W6 --> W7[scipy write_wav\ntempfile talkflow_XXXXX.wav\n16-bit PCM, 16000 Hz mono]
+        W7 --> W8[return /tmp/talkflow_XXXXX.wav]
+    end

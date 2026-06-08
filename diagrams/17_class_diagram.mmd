@@ -1,0 +1,173 @@
+classDiagram
+    class TalkFlowApp {
+        -Config config
+        -AudioRecorder audio_recorder
+        -WhisperEngine whisper_engine
+        -TextInserter text_inserter
+        -HotkeyManager hotkey_manager
+        -TranscriptionHistory history
+        -MenuBarApp menu_app
+        -bool _is_processing
+        -threading.Lock _lock
+        -int _total_transcriptions
+        -float _total_audio_seconds
+        -datetime _session_start
+        +run()
+        +preload_model()
+        +get_stats() dict
+        -_setup_callbacks()
+        -_on_hotkey_press()
+        -_on_hotkey_release()
+        -_stop_and_transcribe()
+        -_transcribe_and_insert(audio_path)
+        -_on_recording_start()
+        -_on_recording_stop(audio_path)
+        -_on_max_duration_reached()
+        -_on_mode_change(mode)
+        -_on_model_change(model)
+        -_on_paste_last()
+        -_on_quit()
+        -_play_sound(sound_type)
+    }
+
+    class AudioRecorder {
+        -int sample_rate
+        -int channels
+        -str dtype
+        -Optional~int~ device
+        -float max_duration
+        -bool _recording
+        -bool _starting
+        -list _audio_chunks
+        -InputStream _stream
+        -Lock _state_lock
+        -Lock _chunks_lock
+        -Timer _max_duration_timer
+        -float _current_rms
+        -float _peak_rms
+        +start_recording() bool
+        +stop_recording() Optional~str~
+        +toggle_recording() Optional~str~
+        +get_audio_devices() list
+        +set_device(device_id)
+        +cleanup()
+        +is_recording bool
+        +is_active bool
+        +current_audio_level float
+        +peak_audio_level float
+        -_audio_callback(indata, frames, time, status)
+        -_on_max_duration()
+    }
+
+    class WhisperEngine {
+        -str model_name
+        -str device
+        -str compute_type
+        -Optional~str~ language
+        -WhisperModel _model
+        -int _cpu_threads
+        +load_model()
+        +transcribe(audio_path) TranscriptionResult
+        +change_model(model_name)
+        +set_language(language)
+        +unload_model()
+        +is_loaded bool
+        +backend str
+        +backend_info str
+        -_detect_cpu_threads() int
+        -_get_device_and_compute() tuple
+        -_get_audio_duration(path) float
+        -_transcribe_impl(path) TranscriptionResult
+    }
+
+    class TextInserter {
+        -Controller _keyboard
+        +insert_text(text) bool
+        +press_key(key)
+        +press_enter()
+        +press_space()
+        -_insert_via_clipboard(text) bool
+    }
+
+    class HotkeyManager {
+        -Set _hotkey
+        -Set _current_keys
+        -bool _hotkey_active
+        -str _mode
+        -Listener _listener
+        -bool _running
+        -Lock _lock
+        +start()
+        +stop()
+        +set_hotkey(keys)
+        +set_mode(mode)
+        +reset_state()
+        +mode str
+        +is_running bool
+        -_on_press(key)
+        -_on_release(key)
+        -_check_hotkey_match() bool
+        -_normalize_key(key)
+        -_is_hotkey_key(key) bool
+        +parse_hotkey_string(str)$ Set
+        +format_hotkey_label(str)$ str
+    }
+
+    class TranscriptionHistory {
+        -list _entries
+        -Path _history_path
+        -Lock _lock
+        +add(text, language, duration, model)
+        +get_last(n) list
+        +get_last_text() Optional~str~
+        +clear()
+        -_load()
+        -_save()
+    }
+
+    class MenuBarApp {
+        -str _current_mode
+        -str _current_model
+        +set_recording_state(recording)
+        +set_processing_state(processing)
+        +set_mode(mode)
+        +set_model(model)
+        +show_notification(title, message)
+        +show_error(message)
+        +run()
+    }
+
+    class Config {
+        +AudioConfig audio
+        +WhisperConfig whisper
+        +HotkeyConfig hotkey
+        +OutputConfig output
+        +AppConfig app
+        +load()$ Config
+        +save()
+    }
+
+    class TranscriptionResult {
+        +str text
+        +str language
+        +float duration
+        +list segments
+    }
+
+    class TranscriptionEntry {
+        +str text
+        +str language
+        +float duration
+        +str timestamp
+        +str model
+    }
+
+    TalkFlowApp --> AudioRecorder
+    TalkFlowApp --> WhisperEngine
+    TalkFlowApp --> TextInserter
+    TalkFlowApp --> HotkeyManager
+    TalkFlowApp --> TranscriptionHistory
+    TalkFlowApp --> MenuBarApp
+    TalkFlowApp --> Config
+    WhisperEngine --> TranscriptionResult
+    TranscriptionHistory --> TranscriptionEntry

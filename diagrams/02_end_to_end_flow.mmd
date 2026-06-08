@@ -1,0 +1,174 @@
+flowchart TD
+    U1([User holds Ctrl+.]) --> HK1
+
+    subgraph HKLAYER["HotkeyManager — pynput Listener Thread"]
+        HK1[_on_press fires\nnormalize key\nCtrl_l / Ctrl_r → Key.ctrl\nchar → lowercase KeyCode]
+        HK1 --> HK2[add to _current_keys set]
+        HK2 --> HK3{_check_hotkey_match?\nhotkey ⊆ current_keys}
+        HK3 -->|No| HK4[wait for next key event]
+        HK3 -->|Yes, first match| HK5{_hotkey_active\nalready?}
+        HK5 -->|Yes| HK4
+        HK5 -->|No| HK6[set _hotkey_active = True\nspawn daemon thread\ncall on_hotkey_press callback]
+    end
+
+    HK6 --> APP1
+
+    subgraph APPPRESS["TalkFlowApp._on_hotkey_press — Worker Thread"]
+        APP1{_is_processing\nor is_active?}
+        APP1 -->|Yes| APP2[ignore press\nreturn]
+        APP1 -->|No| APP3{mode ==\npush_to_talk?}
+        APP3 -->|Yes| APP4[audio_recorder.start_recording]
+        APP3 -->|toggle, already recording| APP5[_stop_and_transcribe]
+        APP3 -->|toggle, not recording| APP4
+    end
+
+    APP4 --> REC1
+
+    subgraph RECLAYER["AudioRecorder.start_recording"]
+        REC1[acquire _state_lock\nset _starting = True]
+        REC1 --> REC2[clear _audio_chunks\nreset _current_rms, _peak_rms]
+        REC2 --> REC3[sd.InputStream open\nsamplerate=16000, channels=1\ndtype=float32, callback=_audio_callback]
+        REC3 --> REC4[stream.start]
+        REC4 --> REC5[set _recording=True\nset _starting=False]
+        REC5 --> REC6[start max_duration Timer\nthreading.Timer 300s\ncall _on_max_duration if fires]
+        REC6 --> REC7[fire on_recording_start callback]
+    end
+
+    REC7 --> UI1[MenuBarApp.set_recording_state True\nshow 🔴 icon]
+    REC7 --> SND1[afplay Tink.aiff\nstart sound]
+
+    subgraph AUDIOCB["AudioRecorder._audio_callback — sounddevice Audio Thread\nlocked loop while recording"]
+        AC1[indata numpy float32 chunk arrives]
+        AC1 --> AC2[copy chunk\nappend to _audio_chunks list]
+        AC2 --> AC3[calculate RMS\nnp.sqrt np.mean chunk²]
+        AC3 --> AC4[update _current_rms\nupdate _peak_rms = max peak, rms]
+        AC4 --> AC5{on_audio_level\ncallback set?}
+        AC5 -->|Yes| AC6[fire on_audio_level rms\nfor real-time level display]
+        AC5 -->|No| AC1
+        AC6 --> AC1
+    end
+
+    U2([User releases Ctrl+.]) --> HKR1
+
+    subgraph HKRELEASE["HotkeyManager._on_release — pynput Listener Thread"]
+        HKR1[normalize released key\ndiscard from _current_keys]
+        HKR1 --> HKR2{_hotkey_active AND\nmode == push_to_talk?}
+        HKR2 -->|No| HKR3[no action]
+        HKR2 -->|Yes| HKR4{_check_hotkey_match\nstill satisfied?}
+        HKR4 -->|Yes| HKR3
+        HKR4 -->|No| HKR5[set _hotkey_active = False\nspawn daemon thread\ncall on_hotkey_release callback]
+    end
+
+    HKR5 --> APPREL1
+
+    subgraph APPRELEASE["TalkFlowApp._on_hotkey_release — Worker Thread"]
+        APPREL1{mode ==\npush_to_talk?}
+        APPREL1 -->|No| APPREL2[no action]
+        APPREL1 -->|Yes| APPREL3[race-condition wait:\npoll is_recording up to 10×50ms]
+        APPREL3 --> APPREL4{is_recording\nnow True?}
+        APPREL4 -->|No| APPREL2
+        APPREL4 -->|Yes| APPREL5[_stop_and_transcribe]
+    end
+
+    APPREL5 --> STOP1
+
+    subgraph STOPREC["AudioRecorder.stop_recording"]
+        STOP1[cancel max_duration Timer]
+        STOP1 --> STOP2[acquire _state_lock\nset _recording = False]
+        STOP2 --> STOP3[stream.stop + stream.close]
+        STOP3 --> STOP4{_audio_chunks\nempty?}
+        STOP4 -->|Yes| STOP5[return None\nno audio]
+        STOP4 -->|No| STOP6[np.concatenate all chunks\ninto single array]
+        STOP6 --> STOP7{len < sample_rate × 0.3\ni.e. < 0.3s?}
+        STOP7 -->|Yes| STOP8[discard — too short\nreturn None]
+        STOP7 -->|No| STOP9[check avg_rms\nwarn if < 0.005 mic may be muted]
+        STOP9 --> STOP10[tempfile.NamedTemporaryFile\ntalkflow_XXXXX.wav in /tmp]
+        STOP10 --> STOP11[convert float32 → int16\naudio × 32767 .astype np.int16]
+        STOP11 --> STOP12[scipy write_wav\nsave 16-bit PCM WAV]
+        STOP12 --> STOP13[fire on_recording_stop callback\naudio_path]
+        STOP13 --> STOP14[return temp_path]
+    end
+
+    STOP13 --> UI2[MenuBarApp.set_recording_state False\nshow ⏳ icon]
+    STOP13 --> SND2[afplay Pop.aiff\nstop sound]
+
+    STOP14 --> TT1
+
+    subgraph TRANSCRIBETHREAD["TalkFlowApp._stop_and_transcribe → spawn daemon thread\n_transcribe_and_insert audio_path"]
+        TT1{_is_processing\nalready True?}
+        TT1 -->|Yes| TT2[return, skip duplicate]
+        TT1 -->|No| TT3[acquire lock\nset _is_processing = True]
+        TT3 --> TT4[menu_app.set_processing_state True\nshow ⏳]
+        TT4 --> TT5[whisper_engine.transcribe audio_path]
+    end
+
+    TT5 --> WE1
+
+    subgraph WHISPER["WhisperEngine.transcribe — ThreadPoolExecutor timeout=120s"]
+        WE1{_model\nloaded?}
+        WE1 -->|No| WE2[load_model\nsee startup diagram]
+        WE1 -->|Yes| WE3
+        WE2 --> WE3[_get_audio_duration\nwave.open read nframes/framerate]
+        WE3 --> WE4{duration < 0.3s?}
+        WE4 -->|Yes| WE5[return empty TranscriptionResult]
+        WE4 -->|No| WE6{duration > 30s?}
+        WE6 -->|Yes — long clip| WE7[use_vad = True\nvad_parameters:\nmin_silence=500ms, pad=100ms]
+        WE6 -->|No — push-to-talk clip| WE8[use_vad = False\nSilero VAD stalls on short clips]
+        WE7 --> WE9
+        WE8 --> WE9["model.transcribe kwargs:\nbeam_size=1, best_of=1, patience=1\ntemperature=0.0\nno_speech_threshold=0.6\ncondition_on_previous_text=False\ncompression_ratio_threshold=2.4\nlog_prob_threshold=-1.0"]
+        WE9 --> WE10[iterate segments generator\ncollect text + timestamps]
+        WE10 --> WE11[join text_parts with space\nstrip whitespace]
+        WE11 --> WE12[return TranscriptionResult\ntext, language, duration, segments]
+    end
+
+    WE12 --> TI0
+
+    subgraph POSTPROCESS["TalkFlowApp — post-transcription"]
+        TI0{result.text\nnon-empty?}
+        TI0 -->|No speech detected| TI_EMPTY[menu_app.show_notification\nNo speech detected\nreturn]
+        TI0 -->|Has text| TI1B[text.strip]
+        TI1B --> TI2{output.add_trailing_space\nin config?}
+        TI2 -->|Yes| TI3[text += space]
+        TI2 -->|No| TI4
+        TI3 --> TI4[history.add\ntext, language, duration, model\nsave to history.json]
+        TI4 --> TI5[_total_transcriptions += 1\n_total_audio_seconds += duration]
+        TI5 --> TI6[time.sleep 0.1\nensure cursor focus settled]
+        TI6 --> TI7[text_inserter.insert_text text]
+    end
+
+    TI7 --> INS1
+
+    subgraph INSERTION["TextInserter._insert_via_clipboard"]
+        INS1[pyperclip.paste\nsave old_clipboard]
+        INS1 --> INS2[pyperclip.copy text\nload transcription into clipboard]
+        INS2 --> INS3[time.sleep 0.05\nclipboard settle]
+        INS3 --> INS4[keyboard.pressed Key.cmd\nkeyboard.press v\nkeyboard.release v\nsimulate Cmd+V]
+        INS4 --> INS5[time.sleep 0.35\nwait for rich editors\nSlack Notes async paste]
+        INS5 --> INS6[pyperclip.copy old_clipboard\nrestore original clipboard]
+        INS6 --> INS7[return True]
+    end
+
+    INS7 --> DONE1
+
+    subgraph FINISH["TalkFlowApp — finalize"]
+        DONE1{insert\nsucceeded?}
+        DONE1 -->|Yes| DONE2[afplay Glass.aiff\nsuccess sound\nprint ✅ Text inserted]
+        DONE1 -->|No| DONE3[afplay Basso.aiff\nerror sound\nmenu_app.show_error]
+        DONE2 --> DONE4
+        DONE3 --> DONE4[finally block:\nset _is_processing = False\nmenu_app.set_processing_state False\nos.unlink audio_path — delete temp WAV]
+    end
+
+    DONE4 --> IDLE([App returns to Idle 🎤])
+
+    style HKLAYER fill:#fff3e0
+    style APPPRESS fill:#e8f5e9
+    style RECLAYER fill:#fce4ec
+    style AUDIOCB fill:#fce4ec
+    style HKRELEASE fill:#fff3e0
+    style APPRELEASE fill:#e8f5e9
+    style STOPREC fill:#fce4ec
+    style TRANSCRIBETHREAD fill:#e8f5e9
+    style WHISPER fill:#e3f2fd
+    style POSTPROCESS fill:#e8f5e9
+    style INSERTION fill:#f3e5f5
+    style FINISH fill:#e8f5e9

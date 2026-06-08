@@ -1,0 +1,99 @@
+sequenceDiagram
+    participant U as User
+    participant HK as HotkeyManager
+    participant APP as TalkFlowApp
+    participant AR as AudioRecorder
+    participant WT as Worker Thread
+    participant WE as WhisperEngine
+    participant TI as TextInserter
+    participant MB as MenuBarApp
+    participant HS as TranscriptionHistory
+    participant FS as FileSystem
+
+    Note over APP,WE: Startup — preload_model runs in background
+    APP->>WE: load_model (daemon thread)
+    WE-->>WE: WhisperModel loaded
+
+    U->>HK: Press Ctrl+.
+    HK->>HK: _on_press → normalize key → add to _current_keys
+    HK->>HK: _check_hotkey_match → True
+    HK->>HK: _hotkey_active = True
+    HK->>APP: spawn thread → on_hotkey_press
+
+    APP->>APP: check _is_processing (False) + is_active (False)
+    APP->>AR: start_recording()
+    AR->>AR: _starting = True, clear chunks
+    AR->>AR: sd.InputStream open + start
+    AR->>AR: _recording = True, _starting = False
+    AR->>AR: threading.Timer(300s) start
+    AR->>APP: on_recording_start callback
+    APP->>MB: set_recording_state(True)
+    MB-->>MB: 🔴 icon
+    APP->>APP: afplay Tink.aiff (subprocess)
+
+    loop Audio Capture (Audio Thread)
+        AR->>AR: _audio_callback(chunk)
+        AR->>AR: append chunk, calc RMS
+    end
+
+    U->>HK: Release Ctrl+.
+    HK->>HK: _on_release → discard from _current_keys
+    HK->>HK: _hotkey_active=True AND push_to_talk mode
+    HK->>HK: _check_hotkey_match → False
+    HK->>HK: _hotkey_active = False
+    HK->>APP: spawn thread → on_hotkey_release
+
+    APP->>APP: poll is_recording (up to 500ms) → True
+    APP->>APP: _stop_and_transcribe()
+    APP->>AR: stop_recording()
+    AR->>AR: cancel max_duration Timer
+    AR->>AR: _recording = False
+    AR->>AR: stream.stop() + stream.close()
+    AR->>AR: np.concatenate chunks
+    AR->>AR: check duration ≥ 0.3s ✓
+    AR->>AR: check avg_rms (warn if < 0.005)
+    AR->>AR: float32 → int16 conversion
+    AR->>FS: write_wav /tmp/talkflow_XXXXX.wav
+    AR->>APP: on_recording_stop(audio_path)
+    APP->>MB: set_recording_state(False)
+    APP->>APP: afplay Pop.aiff
+    AR-->>APP: return /tmp/talkflow_XXXXX.wav
+
+    APP->>WT: spawn daemon thread → _transcribe_and_insert
+    WT->>WT: _is_processing = True
+    WT->>MB: set_processing_state(True)
+    MB-->>MB: ⏳ icon
+
+    WT->>WE: transcribe(audio_path)
+    WE->>WE: ThreadPoolExecutor(1) submit _transcribe_impl
+    WE->>WE: _get_audio_duration → N.Ns
+    WE->>WE: duration > 30s? → use_vad decision
+    WE->>WE: model.transcribe(audio_path, kwargs...)
+    WE->>WE: iterate segments, join text
+    WE-->>WT: TranscriptionResult(text, language, duration)
+
+    alt Has transcribed text
+        WT->>WT: text.strip() + optional trailing space
+        WT->>HS: history.add(text, language, duration, model)
+        HS->>FS: save history.json (max 50 entries)
+        WT->>WT: time.sleep(0.1) — cursor focus settle
+        WT->>TI: insert_text(text)
+        TI->>TI: pyperclip.paste() → save old_clipboard
+        TI->>TI: pyperclip.copy(text)
+        TI->>TI: time.sleep(0.05)
+        TI->>U: keyboard.pressed(Cmd) + press/release v → Cmd+V
+        TI->>TI: time.sleep(0.35) — wait rich editors
+        TI->>TI: pyperclip.copy(old_clipboard) — restore
+        TI-->>WT: True (success)
+        WT->>APP: afplay Glass.aiff
+    else No speech detected
+        WT->>MB: show_notification("No speech detected")
+    else Exception or Timeout
+        WT->>APP: afplay Basso.aiff
+        WT->>MB: show_error(str(e))
+    end
+
+    WT->>WT: _is_processing = False
+    WT->>MB: set_processing_state(False)
+    MB-->>MB: 🎤 icon (idle)
+    WT->>FS: os.unlink /tmp/talkflow_XXXXX.wav

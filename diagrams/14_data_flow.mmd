@@ -1,0 +1,36 @@
+flowchart LR
+    subgraph Input["Input Layer"]
+        MIC[🎙️ System Microphone\nOS audio device]
+        KB[⌨️ Keyboard Events\nglobal listener]
+    end
+
+    subgraph Capture["Capture Layer"]
+        RAW[float32 numpy arrays\n16kHz mono chunks]
+        WAV[📁 /tmp/talkflow_XXXXX.wav\n16-bit PCM 16kHz mono]
+    end
+
+    subgraph AI["AI Layer"]
+        MODEL[🧠 Whisper Model\nfaster-whisper CTranslate2\nint8 on CPU / float16 on CUDA]
+        RESULT[TranscriptionResult\ntext, language, duration, segments]
+    end
+
+    subgraph Output["Output Layer"]
+        CLIP[📋 System Clipboard\npyperclip]
+        CURSOR[📝 Active App Text Field\nany macOS app]
+    end
+
+    subgraph Persistence["Persistence Layer"]
+        CONFIG[⚙️ ~/.config/talkflow/config.toml\nmodel, hotkey, language, audio settings]
+        HIST[📜 ~/.config/talkflow/history.json\nlast 50 transcriptions with metadata]
+    end
+
+    MIC -->|sounddevice InputStream 16kHz| RAW
+    KB -->|pynput start/stop triggers| RAW
+    RAW -->|np.concatenate → int16 → write_wav| WAV
+    WAV -->|faster-whisper inference| MODEL
+    MODEL --> RESULT
+    RESULT -->|result.text| CLIP
+    CLIP -->|Cmd+V pynput simulate| CURSOR
+    RESULT -->|TranscriptionEntry append| HIST
+    CONFIG -->|load at startup| MODEL
+    HIST -->|get_last_text for re-paste| CLIP

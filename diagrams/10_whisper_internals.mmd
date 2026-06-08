@@ -1,0 +1,36 @@
+flowchart TD
+    subgraph LOAD["WhisperEngine.load_model"]
+        L1[_detect_cpu_threads\ncpu_count // 2, min 4]
+        L1 --> L2[_get_device_and_compute]
+        L2 --> L3{device param\n== auto?}
+        L3 -->|Yes| L4{torch available\n+ CUDA?}
+        L4 -->|Yes| L5[device = cuda\ncompute = float16]
+        L4 -->|No| L6[device = cpu\ncompute = int8]
+        L3 -->|explicit| L7[use as-is]
+        L5 --> L8
+        L6 --> L8
+        L7 --> L8[WhisperModel model_name\ndevice, compute_type, cpu_threads\ndownloads weights to ~/.cache if absent]
+        L8 --> L9[self._model = loaded model]
+    end
+
+    subgraph TRANSCALL["WhisperEngine.transcribe — outer layer"]
+        T1[ThreadPoolExecutor max_workers=1\nsubmit _transcribe_impl]
+        T1 --> T2[future.result timeout=120s]
+        T2 --> T3{TimeoutError?}
+        T3 -->|Yes| T4[raise RuntimeError\ntimed out after 120s]
+        T3 -->|No| T5[return TranscriptionResult]
+    end
+
+    subgraph IMPL["WhisperEngine._transcribe_impl"]
+        I1[wave.open path\nnframes / framerate = duration]
+        I1 --> I2{duration < 0.3s?}
+        I2 -->|Yes| I3[return empty result\nskip model inference]
+        I2 -->|No| I4{duration > 30s?}
+        I4 -->|Yes| I5[use_vad = True\nvad_parameters\nmin_silence=500ms, pad=100ms]
+        I4 -->|No| I6[use_vad = False\nSilero VAD hangs on short clips]
+        I5 --> I7
+        I6 --> I7["model.transcribe\nbeam_size=1, best_of=1, patience=1\ntemperature=0.0, condition_on_previous_text=False\nno_speech_threshold=0.6\ncompression_ratio_threshold=2.4\nlog_prob_threshold=-1.0"]
+        I7 --> I8[iterate segments_gen lazily\ncollect start, end, text per segment]
+        I8 --> I9[join text_parts strip\nfull_text = joined segments]
+        I9 --> I10[return TranscriptionResult\ntext, language from info\nduration from info, segments list]
+    end

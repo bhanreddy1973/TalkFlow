@@ -1,0 +1,47 @@
+flowchart TD
+    subgraph ERR1["Hotkey Press — Ignored"]
+        E1A{_is_processing == True?}
+        E1A -->|Yes| E1B[ignore press\nreturn immediately\nno duplicate recording]
+    end
+
+    subgraph ERR2["Audio Too Short"]
+        E2A[stop_recording called]
+        E2A --> E2B{duration < 0.3s?}
+        E2B -->|Yes| E2C[return None\nno WAV saved\ntranscription skipped]
+    end
+
+    subgraph ERR3["No Audio Captured"]
+        E3A[stop_recording called]
+        E3A --> E3B{_audio_chunks empty?}
+        E3B -->|Yes| E3C[return None\nstream may have\nfailed to capture]
+    end
+
+    subgraph ERR4["Microphone Too Quiet"]
+        E4A[avg_rms < 0.005]
+        E4A --> E4B[log warning:\nmic may be muted]
+        E4B --> E4C[continue to transcription\nWhisper will return empty text]
+        E4C --> E4D[show_notification: No speech detected]
+    end
+
+    subgraph ERR5["Transcription Timeout"]
+        E5A[future.result timeout=120s]
+        E5A --> E5B[TimeoutError]
+        E5B --> E5C[raise RuntimeError\ntimed out after 120s]
+        E5C --> E5D[except in _transcribe_and_insert\nafplay Basso.aiff\nshow_error notification]
+        E5D --> E5E[cleanup: delete WAV\nreset _is_processing]
+    end
+
+    subgraph ERR6["Clipboard / Insertion Failure"]
+        E6A[_insert_via_clipboard raises]
+        E6A --> E6B[print Clipboard paste failed]
+        E6B --> E6C[return False]
+        E6C --> E6D[afplay Basso.aiff\nshow_error: Failed to insert text]
+    end
+
+    subgraph ERR7["Model Change Race"]
+        E7A[change_model called]
+        E7A --> E7B[_model = None immediately]
+        E7B --> E7C{transcribe called\nbefore load completes?}
+        E7C -->|Yes| E7D[load_model called inline\nblocks transcription thread\nuntil new model ready]
+        E7C -->|No| E7E[load completes in background\nno impact]
+    end

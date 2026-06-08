@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+venv/
+.venv/
+
+# macOS
+.DS_Store
+
+# Logs and runtime
+logs/
+*.pid
+.talkflow.pid
+
+# IDE
+.vscode/
+.idea/
+.claude/

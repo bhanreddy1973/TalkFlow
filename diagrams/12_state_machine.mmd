@@ -1,0 +1,55 @@
+stateDiagram-v2
+    [*] --> Startup
+
+    Startup --> ModelLoading : app.run called
+    ModelLoading --> Idle : model ready in background
+
+    Idle --> RecordingStarting : hotkey pressed\n_on_hotkey_press fires
+    RecordingStarting --> Idle : already processing\nor already active → ignore
+
+    RecordingStarting --> Recording : start_recording success\nInputStream open
+
+    state Recording {
+        [*] --> Streaming
+        Streaming --> Streaming : audio_callback chunks accumulate
+        Streaming --> LowAudioWarn : avg_rms < 0.005\nmic may be muted
+        LowAudioWarn --> Streaming : audio level normalizes
+    }
+
+    Recording --> TooShort : stop_recording\nduration < 0.3s
+    TooShort --> Idle : discard audio
+
+    Recording --> Saving : hotkey released\nor max_duration timer fires
+    Saving --> Idle : no audio chunks
+
+    Saving --> Processing : WAV saved to /tmp
+
+    state Processing {
+        [*] --> CheckingModel
+        CheckingModel --> LoadingModel : model not loaded
+        CheckingModel --> Transcribing : model already loaded
+        LoadingModel --> Transcribing : WhisperModel ready
+        Transcribing --> CheckingResult : segments generated
+    }
+
+    Processing --> Idle : timeout 120s\nor exception
+
+    Processing --> Inserting : result.text non-empty
+    Processing --> Idle : no speech detected\nshow notification
+
+    state Inserting {
+        [*] --> SaveClipboard
+        SaveClipboard --> CopyToClipboard : pyperclip.paste saved
+        CopyToClipboard --> PasteCmd : pyperclip.copy text
+        PasteCmd --> WaitForEditor : Cmd+V simulated
+        WaitForEditor --> RestoreClipboard : 350ms elapsed
+    }
+
+    Inserting --> Idle : success — Glass sound
+    Inserting --> Idle : failure — Basso sound\nshow_error notification
+
+    Idle --> Idle : Paste Last Transcription\nre-runs Inserting sub-flow
+    Idle --> ModelLoading : model change from menu
+
+    Idle --> Shutdown : Quit menu or KeyboardInterrupt
+    Shutdown --> [*]

@@ -1,0 +1,9 @@
+flowchart TD
+    A([User picks model\nin menu bar e.g. small]) --> B[TalkFlowApp._on_model_change model]
+    B --> C{model in\nAVAILABLE_MODELS?}
+    C -->|No| D[raise ValueError]
+    C -->|Yes| E[whisper_engine.change_model\nset _model = None\nset model_name = new model]
+    E --> F[config.whisper.model = model\nupdate in-memory config]
+    F --> G[menu_app.show_notification\nSwitching to model...]
+    G --> H[spawn daemon thread\nwhisper_engine.load_model\ndownload + load new model]
+    H --> I([Next transcription uses new model])

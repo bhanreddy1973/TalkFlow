@@ -1,0 +1,29 @@
+flowchart TD
+    subgraph NORMALIZE["_normalize_key — called on every key event"]
+        N1{key type?}
+        N1 -->|Key instance modifier| N2{which modifier?}
+        N2 -->|alt / alt_l / alt_r| N3[return Key.alt]
+        N2 -->|ctrl / ctrl_l / ctrl_r| N4[return Key.ctrl]
+        N2 -->|shift / shift_l / shift_r| N5[return Key.shift]
+        N2 -->|cmd / cmd_l / cmd_r| N6[return Key.cmd]
+        N2 -->|other Key| N7[return key as-is]
+        N1 -->|KeyCode| N8{has .char?}
+        N8 -->|Yes| N9[return KeyCode.from_char\nchar.lower]
+        N8 -->|No| N10[return key as-is]
+        N1 -->|unknown| N11[return None]
+    end
+
+    subgraph MATCH["_check_hotkey_match"]
+        M1[normalize each key\nin _hotkey set]
+        M1 --> M2[normalize each key\nin _current_keys set]
+        M2 --> M3{normalized_hotkey\n⊆ normalized_current?}
+        M3 -->|Yes| M4[return True — hotkey active]
+        M3 -->|No| M5[return False]
+    end
+
+    subgraph PARSE["parse_hotkey_string — at startup"]
+        PS1[split by + e.g. ctrl+.]
+        PS1 --> PS2[map each token through key_map\nctrl→Key.ctrl, alt/option→Key.alt\nshift→Key.shift, cmd/command→Key.cmd\nspace→KeyCode space, f1-f20→Key.f1...]
+        PS2 --> PS3[single chars → KeyCode.from_char]
+        PS3 --> PS4[return Set of Key + KeyCode]
+    end

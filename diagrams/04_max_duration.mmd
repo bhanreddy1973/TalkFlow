@@ -1,0 +1,8 @@
+flowchart TD
+    A[start_recording called] --> B[threading.Timer started\nmax_duration seconds default 300s]
+    B --> C{Timer fires\nbefore user releases?}
+    C -->|No — user releases first| D[Timer cancelled in stop_recording\n_max_duration_timer.cancel]
+    C -->|Yes — max duration hit| E[_on_max_duration fires\ncall on_max_duration_reached callback]
+    E --> F[TalkFlowApp._on_max_duration_reached\nprint ⏱️ Max recording duration reached]
+    F --> G[call _stop_and_transcribe\nsame path as normal release]
+    G --> H[proceeds through full\ntranscription and insertion flow]

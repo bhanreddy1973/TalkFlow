@@ -1,0 +1,8 @@
+flowchart TD
+    A([User clicks Quit\nor KeyboardInterrupt]) --> B[TalkFlowApp._on_quit]
+    B --> C[hotkey_manager.stop\nlistener.stop\nset _running = False]
+    C --> D[audio_recorder.cleanup\ncancel max_duration timer\nstop and close InputStream if open]
+    D --> E[config.save\nwrite config.toml back to\n~/.config/talkflow/config.toml]
+    E --> F[_remove_pid_file\nos.unlink .talkflow.pid]
+    F --> G[print session stats\ntotal transcriptions\ntotal audio seconds\nsession uptime]
+    G --> H([Process exits])
